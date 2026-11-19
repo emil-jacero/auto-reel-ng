@@ -116,6 +116,7 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | 6 | `editor-shortcuts` ✅ built 2026-11-19 (HLD D-28) | the Timeline's keys answer anywhere in the workspace, Keyboard shortcuts list and single-key switch, Ctrl+wheel over the whole Timeline | 4 | 1–2 days |
 | 7 | `clip-context-menu` ✅ built 2026-11-19 (HLD D-28) | a right-click or Shift+F10 on a clip block opens a menu of its edits (Rotate, Cut at playhead, poster, Move to, Ignore); reverses the context-menu half of `compact-bin-tools`' non-goal (every tool stays a direct button); the track only until `plain-clip-bin` | 6 | 1 day |
 | 8 | `clip-multi-select` ✅ built 2026-11-19 (HLD D-28) | the selection may hold several clips (Ctrl/Cmd+click, Shift+click, Ctrl/Shift+Enter); a Clip tab, the clip menu and a drag with a drop line act on the set, each as one Undo step; the marks stay until `plain-clip-bin` | 7 | 2 days |
+| 9 | `chapters-in-inspector` ✅ built 2026-11-19 (HLD D-28) | the Event tab lists the chapters (Edit title card, Move up/down, Delete, Add chapter); the bin's chapter headings become plain; an empty chapter's hint points at Move to…; the bin keeps its sections, drag and marks until `plain-clip-bin` | 8 | 1 day |
 
 Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15): the bin follows the window's
 width (`clamp(240px, 22vw, 320px)`) and its compact tools take less height. Clip rows are two lines with a fine

@@ -968,6 +968,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **Slice 8 is built** (`clip-multi-select`, web only; D-28): the selection may hold several clips (Ctrl/Cmd+click,
     Shift+click, Ctrl/Shift+Enter) on the track and in today's bin; the Clip tab, the clip menu and the group drag act
     on all of them, each as one Undo step; no API, engine or `RENDER_GRAPH_VERSION` change.
+    **Slice 9 is built** (`chapters-in-inspector`, web only; D-28): the Event tab holds a Chapters list (Edit title card,
+    Move up, Move down, Delete, Add chapter), and the bin's chapter headings are plain; the same rules, a new home; no
+    API, engine or `RENDER_GRAPH_VERSION` change.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -2113,6 +2116,16 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     Ctrl or Shift, so the marks remain the way to move several clips by touch until the plain list replaces them, which
     will build its keyboard on this selection. The lock words name no marks, so they stay true then. The Keyboard
     shortcuts list gains three rows. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
+  - **Chapter tools live in the Event tab (change `chapters-in-inspector`, slice 9).** The inspector's Event tab holds a
+    Chapters list after Details (`edit/ChapterList.tsx`): one row per chapter in the draft's order, with Edit title
+    card, Move up, Move down and Delete as named icon buttons, a deleted chapter's row with Undo, and Add chapter after
+    the last row. The bin holds no chapter tool: its headings are the name and counts only. The tools are not on the
+    track because the track may be absent (it waits until every clip it shows has a ready proxy) and an empty chapter
+    has no band, so a chapter just added would have no visible handle; the Event tab is always there. The rules of "Edit
+    mode adds, renames, reorders and deletes chapters" are unchanged (names, refusals, focus, announcements, save-bar
+    counts, the busy-control rule, touch sizes), and so are the handlers in `EventEditor.tsx`. After Escape in the card
+    editor, focus returns to the row's Edit title card button. An empty chapter's hint points at Move to… instead of
+    the bin's drag and Move marked to…. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
   - **Not here (slice 2):** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore
     edit), dragging on the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
