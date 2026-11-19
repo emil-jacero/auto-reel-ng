@@ -160,10 +160,15 @@ export function pressClip(
     case 'alone':
       return alone
     case 'toggle': {
-      const next = held.includes(identity)
-        ? held.filter((candidate) => candidate !== identity)
-        : [...held, identity]
-      return clipsOf(next, identity, identity)
+      if (!held.includes(identity)) {
+        return clipsOf([...held, identity], identity, identity)
+      }
+      // Taking a clip out: the anchor stays the clip pressed (design D3), but `last` must name a
+      // clip still selected, so the track scrolls to and focuses one that is.
+      const next = held.filter((candidate) => candidate !== identity)
+      const was = sel.kind === 'clips' ? sel.last : null
+      const last = was !== null && next.includes(was) ? was : (next[next.length - 1] as string)
+      return clipsOf(next, identity, last)
     }
     case 'range': {
       const anchor = sel.kind === 'clip' ? sel.identity : sel.kind === 'clips' ? sel.anchor : null

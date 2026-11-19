@@ -11,6 +11,7 @@ import {
   groupWords,
   markWords,
   MOVE_REASON_WORDS,
+  NOTHING_IGNORED,
   NOTHING_MOVED,
   movedWords,
   moveReason,
@@ -124,6 +125,7 @@ describe('the words', () => {
     assert.equal(movedWords(3, 'Dag 2'), '3 clips moved to “Dag 2”.')
     assert.equal(movedWords(1, 'Test'), '1 clip moved to “Test”.')
     assert.equal(NOTHING_MOVED, 'Nothing moved.')
+    assert.equal(NOTHING_IGNORED, 'Nothing ignored.')
   })
 
   it('give Move’s reason: marks first, then the chapter, none when it can act', () => {

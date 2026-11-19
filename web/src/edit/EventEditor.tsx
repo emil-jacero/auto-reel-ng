@@ -169,6 +169,7 @@ import {
   CLEARED_WORDS,
   MOVE_REASON_WORDS,
   MOVING_WORDS,
+  NOTHING_IGNORED,
   NOTHING_MOVED,
   NO_MARKS,
   afterMove,
@@ -2006,7 +2007,7 @@ export function EventEditor({
     (identities) => {
       const current = latest.current
       if (!idle(current)) {
-        return
+        return false
       }
       const action: SelectionEdit = {
         type: 'ignore-many',
@@ -2014,12 +2015,13 @@ export function EventEditor({
         onDisk: (identity) => onDisk(clips.get(identity)),
       }
       if (selectionStep(current, action) === current) {
-        announce(NOTHING_MOVED)
-        return
+        announce(NOTHING_IGNORED)
+        return false
       }
       const count = playedOf(current.draft, identities.filter(action.onDisk)).length
       dispatch(action)
       announce(`Ignored ${plural(count, 'clip', 'clips')}. Not saved.`)
+      return true
     },
     [announce, clips],
   )

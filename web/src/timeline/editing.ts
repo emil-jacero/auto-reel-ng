@@ -82,8 +82,11 @@ export type EditBinding = {
     slot: Pick<GroupSlot, 'chapter' | 'beforeIdentity' | 'place'>,
     drawn: ReadonlySet<string>,
   ): void
-  /** Several selected clips released over the bin: one draft edit that ignores them all. Ignored while locked. */
-  onIgnoreMany(identities: readonly string[]): void
+  /**
+   * Several selected clips released over the bin, or Ignore clips: one draft edit that ignores
+   * them all. Ignored while locked. Returns whether it ignored anything (it says so when not).
+   */
+  onIgnoreMany(identities: readonly string[]): boolean
   /**
    * Rotate every one of `identities` that is on disk and in a chapter a quarter `way`, each from
    * its own turn: one draft edit ("3 clips rotated right."), as Rotate marked makes it. Ignored
