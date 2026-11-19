@@ -19,6 +19,11 @@ describe('the Clips help', () => {
     assert.match(MARK_HINT, /^Mark clips with the box at the top right/)
   })
 
+  it('sends the operator to the Event tab for Add chapter, not to the bin', () => {
+    assert.match(REORDER_ONE, /Add chapter in the Event tab’s Chapters list/)
+    assert.doesNotMatch(REORDER_ONE, /below the chapters/)
+  })
+
   it('adds the ignored and missing notes only when they apply', () => {
     const lines = clipsHelpLines({ ...plain, hasIgnored: true, hasMissing: true })
     assert.deepEqual(lines, [REORDER_ONE, IGNORED_NOTE, MISSING_NOTE, MARK_HINT])

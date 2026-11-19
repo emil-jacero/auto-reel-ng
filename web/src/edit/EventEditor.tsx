@@ -82,7 +82,6 @@ import {
   nameDialogNote,
 } from './chapterNames'
 import { ChapterDrag } from './ChapterDrag'
-import { AddChapter, DeletedChapter } from './ChapterTools'
 import { ChapterList } from './ChapterList'
 import type { ChapterRowModel } from './ChapterList'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
@@ -3126,20 +3125,13 @@ export function EventEditor({
       return
     }
     focusAfter.current = null
-    // The Chapters list's control first: it is the chapter's home (the bin keeps its own copies
-    // until they are taken out), then any other.
+    // The Chapters list's control (the Event tab: the one place the chapter tools are).
     const inList = (selector: string) =>
       firstShown(root.querySelectorAll<HTMLElement>(`.edit-chapters ${selector}`))
     const target =
       request.target === 'add'
-        ? (inList('.chapter-add-button') ??
-          root.querySelector<HTMLElement>('.chapter-add-button'))
-        : (inList(`[data-chapter-key="${request.key}"] .${request.target}`) ??
-          firstShown(
-            root.querySelectorAll<HTMLElement>(
-              `[data-chapter-key="${request.key}"] .${request.target}`,
-            ),
-          ))
+        ? inList('.chapter-add-button')
+        : inList(`[data-chapter-key="${request.key}"] .${request.target}`)
     target?.focus({ preventScroll: true })
     scrollAfter.current =
       target?.closest<HTMLElement>('.chapter-row, .chapter-tools') ?? target
@@ -3152,14 +3144,12 @@ export function EventEditor({
     const root = editorRef.current
     if (request !== null && request.target === 'heading' && root !== null) {
       focusAfter.current = null
-      // Its row in the Chapters list (focusable, `tabIndex=-1`), else its heading in the bin.
+      // Its row in the Chapters list (focusable, `tabIndex=-1`).
       const row = root.querySelector<HTMLElement>(
         `.edit-chapters .chapter-row[data-chapter-key="${request.key}"]`,
       )
-      const section = root.querySelector<HTMLElement>(`[data-chapter-key="${request.key}"]`)
-      const target = row ?? section?.querySelector<HTMLElement>('h2')
-      target?.focus({ preventScroll: true })
-      scrollAfter.current = row ?? section
+      row?.focus({ preventScroll: true })
+      scrollAfter.current = row
     }
     const element = scrollAfter.current
     scrollAfter.current = null
@@ -3659,25 +3649,15 @@ export function EventEditor({
                 onDropOutside={onDropOnTrack}
                 rootRef={editorRef}
               >
-                {ready.draft.chapters.map((chapter) => {
-                  const heading = chapterHeading(chapter.name, hasNamedChapter)
-                  const model = tools.get(chapter.key)
-                  return chapter.deleted || model === undefined ? (
-                    <DeletedChapter
-                      key={chapter.key}
-                      chapterKey={chapter.key}
-                      heading={heading}
-                      notes={notes.get(chapter.key) ?? NONE_REMOVED}
-                      locked={listsLocked}
-                      onUndo={onUndoDelete}
-                    />
-                  ) : (
+                {ready.draft.chapters.map((chapter) =>
+                  // A deleted chapter is listed in the Chapters list only, with its Undo.
+                  chapter.deleted ? null : (
                     <ClipOrderList
                       key={chapter.key}
                       eventId={eventId}
                       chapterKey={chapter.key}
                       name={chapter.name}
-                      heading={heading}
+                      heading={chapterHeading(chapter.name, hasNamedChapter)}
                       order={ready.draft.orders.get(chapter.key) ?? NONE_REMOVED}
                       original={ready.baseline.original.get(chapter.key) ?? NONE_REMOVED}
                       ignored={ignoredOf.get(chapter.key) ?? NONE_REMOVED}
@@ -3686,7 +3666,7 @@ export function EventEditor({
                       origins={origins}
                       lastMoved={ready.lastMoved}
                       locked={listsLocked}
-                      tools={model}
+                      alone={listed.length < 2}
                       cuts={ready.draft.cuts}
                       baseCuts={ready.baseline.cuts}
                       typed={ready.typed}
@@ -3712,8 +3692,8 @@ export function EventEditor({
                       onSelectClip={selectClip}
                       ignoredApart={ignoredApart}
                     />
-                  )
-                })}
+                  ),
+                )}
                 {detail !== null && ignoredApart && (
                   <IgnoredBin
                     eventId={eventId}
@@ -3738,7 +3718,6 @@ export function EventEditor({
             </CardButtonContext.Provider>
           )}
 
-          {detail !== null && <AddChapter locked={listsLocked} onAdd={onAddChapter} />}
           </>,
           saveBar: <>
           {/*
