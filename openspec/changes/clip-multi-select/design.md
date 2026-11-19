@@ -53,7 +53,10 @@ export function selectionWords(was: Selection, now: Selection, nameOf: (id: stri
 - **One clip stays `clip`.** Two or more are `clips`. `pressClip` and `keptSelection` normalise: a set of one becomes
   `clip`, and an empty set becomes `none`. So every reader of `kind === 'clip'` keeps working, and only the readers that
   need a set call `selectedClips`.
-- **Anchor.** For `clip` it is the clip itself. `toggle` sets it to the toggled clip, and `range` keeps it.
+- **Anchor.** For `clip` it is the clip itself. `toggle` sets it to the toggled clip, and `range` keeps it. A set that
+  a toggle normalises down to one clip (or to none) keeps no anchor beside it: `{a, c}` with `a` taken out is the clip
+  `c`, so a following Shift press ranges from `c`, not from `a`. A clip alone is its own anchor, and a deselected clip
+  is a poor place to range from, so this is accepted rather than held in extra state.
 - **Range.** It runs from the anchor to the pressed clip in `order`: the track passes the drawn order, the bin its
   rows' order. An anchor that is not in `order` (the clip left the track) makes the range the pressed clip alone.
 - **Toggling from a cut, card or suggestion** starts a set of the pressed clip alone.
@@ -67,16 +70,20 @@ export function selectionWords(was: Selection, now: Selection, nameOf: (id: stri
 | { type: 'ignore-many'; identities: readonly string[] }
 ```
 - **Reuse.** `selection-move` and `selection-drop` reuse `moveMarkedToEnd` and `moveGroup`, with the shipped set in
-  place of `state.marked`. Both drop the identities that a listed chapter does not play or that are missing
-  (`groupOf`'s rule), so a stale selection cannot move a clip it should not. `ignore-many` applies the existing
-  `ignore` step to each clip in one draft edit. Rotate already takes `identities[]`.
+  place of `state.marked`. Both drop the identities that a listed chapter does not play (`groupOf`'s rule) and the
+  ones that are not on disk, so a stale selection cannot move a clip it should not. A missing clip stays in its
+  chapter's order, so the order alone cannot say so: each of the three actions also carries `onDisk(identity)`, built
+  by the dispatcher from the clips it knows (as `rotate` takes its predicate), and `ignore-many` applies the existing
+  `ignore` step to each clip that passes, in one draft edit. Rotate already takes `identities[]`.
 - **The marks.** None of the three touches `state.marked`, except that `afterMove` unmarks a moved clip, as a drag of
   a marked clip does today.
 - **Undo labels.** `describeEdit` gains "move of N clips", "ignore of N clips" and "rotation of N clips".
 - **Pending.** Move to… with several clips dispatches in `startTransition` like `marked-move`, so the existing
   `movePending` lock covers both. One move of one clip is a plain dispatch.
-- **Tests.** `groupMove.test.ts` gains the shipped-set cases. A reducer test checks that one `ignore-many` is one
-  history step.
+- **Tests.** `groupMove.test.ts` gains the shipped-set cases. `selectionEdit.test.ts` drives `selectionStep` and
+  `selectionLabel` and checks that one `ignore-many` is one history step. `EventEditor.tsx` cannot be imported under
+  Node (TSX), so its wiring (`describeEdit`, `afterEdit`) is covered by the Playwright pass of tasks 2.x and 3.1, which
+  reads the Undo labels ("Undo ignore of 2 clips", "Undo move of 2 clips").
 
 ### D3. Pressing on the track and in the bin
 - **Modifiers.** `pressOf(event)` gives `toggle` for Ctrl or Meta, `range` for Shift, and `alone` otherwise. On
@@ -121,8 +128,8 @@ export function selectionWords(was: Selection, now: Selection, nameOf: (id: stri
 
 ### D6. Words and announcements
 - **One status.** The selection's polite status says "3 clips selected." for a change to a set. A toggle says
-  "s1710003.mp4 added. 3 clips selected." or "… taken out. 2 clips selected.". A change to one clip keeps today's
-  words.
+  "s1710003.mp4 added. 3 clips selected." or "… taken out. 2 clips selected.", and so does the one that takes a set of
+  two down to one clip ("… taken out. 1 clip selected."). Any other change to one clip keeps today's words.
 - **Alt+arrows with a set:** "Alt and an arrow move one clip. Move to… in the Clip tab moves the selected clips."
 - **The lock words** name no marks, so they stay true when `plain-clip-bin` removes them:
   - `MENU_LOCKED` becomes "Clip edits wait for the save or the move of several clips to finish.";

@@ -352,9 +352,24 @@ test('a range or a set from another kind says only the count, once', () => {
   )
 })
 
+test('taking one clip out of a set of two names it, and says one clip is left', () => {
+  const two = set(['a', 'c'], 'c', 'c')
+  assert.equal(selectionWords(two, clip('c'), nameOf), 'a.mp4 taken out. 1 clip selected.')
+  assert.equal(selectionWords(two, clip('a'), nameOf), 'c.mp4 taken out. 1 clip selected.')
+  // The Ctrl+click that does it, end to end.
+  assert.equal(
+    selectionWords(two, pressClip(two, 'a', 'toggle', ['a', 'b', 'c']), nameOf),
+    'a.mp4 taken out. 1 clip selected.',
+  )
+  // A press on another clip replaces the set: nothing is taken out.
+  assert.equal(selectionWords(two, clip('b'), nameOf), null)
+  // A larger set that collapses to one clip, or the last clip going, says nothing.
+  assert.equal(selectionWords(set(['a', 'b', 'c'], 'c', 'c'), clip('a'), nameOf), null)
+  assert.equal(selectionWords(clip('a'), NO_SELECTION, nameOf), null)
+})
+
 test('a change to one clip, to another kind, or to nothing new keeps today\'s words: none', () => {
   const two = set(['a', 'c'], 'c', 'c')
-  assert.equal(selectionWords(two, clip('a'), nameOf), null)
   assert.equal(selectionWords(clip('a'), clip('b'), nameOf), null)
   assert.equal(selectionWords(two, NO_SELECTION, nameOf), null)
   assert.equal(selectionWords(two, card('r1'), nameOf), null)

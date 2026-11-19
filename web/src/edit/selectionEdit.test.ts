@@ -17,6 +17,8 @@ const A4 = 'a4.mp4'
 const B1 = 'b1.mp4'
 const B2 = 'b2.mp4'
 
+const ALL = (): boolean => true
+
 function target(marked: string[] = []): SelectionTarget {
   const chapters = [
     { key: 'r0', name: '', movable: [A1, A2, A3, A4], ignored: [] },
@@ -62,39 +64,69 @@ function apply(
 
 describe('selection-move', () => {
   it('puts the shipped clips last in the target, in page order', () => {
-    const next = selectionStep(target(), { type: 'selection-move', identities: [B1, A2], to: 'r1' })
+    const next = selectionStep(target(), { onDisk: ALL, type: 'selection-move', identities: [B1, A2], to: 'r1' })
     assert.deepEqual(lists(next), { r0: [A1, A3, A4], r1: [B2, A2, B1] })
   })
 
-  it('does not move a missing or ignored identity of the set', () => {
+  it('does not move an ignored or unknown identity of the set', () => {
     const state = target()
-    // a3 is ignored and a4 is missing: neither is in a chapter's order any more.
+    // a3 was ignored after the set was taken: it is in no chapter's order any more.
     const gone: SelectionTarget = {
       ...state,
-      draft: { ...state.draft, orders: new Map(state.draft.orders).set('r0', [A1, A2]) },
+      draft: { ...state.draft, orders: new Map(state.draft.orders).set('r0', [A1, A2, A4]) },
     }
     const next = selectionStep(gone, {
+      onDisk: ALL,
       type: 'selection-move',
-      identities: [A2, A3, A4, 'unknown.mp4'],
+      identities: [A2, A3, 'unknown.mp4'],
       to: 'r1',
     })
-    assert.deepEqual(lists(next), { r0: [A1], r1: [B1, B2, A2] })
+    assert.deepEqual(lists(next), { r0: [A1, A4], r1: [B1, B2, A2] })
     assert.equal(
-      selectionStep(gone, { type: 'selection-move', identities: [A3, A4], to: 'r1' }),
+      selectionStep(gone, { onDisk: ALL, type: 'selection-move', identities: [A3], to: 'r1' }),
       gone,
+    )
+  })
+
+  it('does not move a missing clip, which stays in its chapter: a range over the bin holds it', () => {
+    const state = target()
+    const notA4 = (identity: string): boolean => identity !== A4
+    const next = selectionStep(state, {
+      onDisk: notA4,
+      type: 'selection-move',
+      identities: [A3, A4, B1],
+      to: 'r1',
+    })
+    assert.deepEqual(lists(next), { r0: [A1, A2, A4], r1: [B2, A3, B1] })
+    assert.equal(
+      selectionStep(state, { onDisk: notA4, type: 'selection-move', identities: [A4], to: 'r1' }),
+      state,
+    )
+    const drop = selectionStep(state, {
+      onDisk: notA4,
+      type: 'selection-drop',
+      identities: [A3, A4],
+      dragged: A3,
+      to: 'r1',
+      gap: 0,
+    })
+    assert.deepEqual(lists(drop), { r0: [A1, A2, A4], r1: [A3, B1, B2] })
+    assert.equal(
+      selectionLabel({ onDisk: notA4, type: 'selection-move', identities: [A3, A4], to: 'r1' }, state),
+      'move of a3.mp4',
     )
   })
 
   it('is a no-op for an unlisted target', () => {
     const state = target()
-    assert.equal(selectionStep(state, { type: 'selection-move', identities: [A1], to: 'nope' }), state)
+    assert.equal(selectionStep(state, { onDisk: ALL, type: 'selection-move', identities: [A1], to: 'nope' }), state)
   })
 })
 
 describe('selection-drop', () => {
   it('drops the shipped clips as one run at the gap and names the dragged one', () => {
     const next = selectionStep(target(), {
-      type: 'selection-drop',
+      onDisk: ALL, type: 'selection-drop',
       identities: [A4, B1, A2],
       dragged: A4,
       to: 'r1',
@@ -107,11 +139,11 @@ describe('selection-drop', () => {
   it('leaves the state alone for a drop that changes nothing or holds nothing', () => {
     const state = target()
     assert.equal(
-      selectionStep(state, { type: 'selection-drop', identities: [A2, A3], dragged: A2, to: 'r0', gap: 2 }),
+      selectionStep(state, { onDisk: ALL, type: 'selection-drop', identities: [A2, A3], dragged: A2, to: 'r0', gap: 2 }),
       state,
     )
     assert.equal(
-      selectionStep(state, { type: 'selection-drop', identities: ['gone'], dragged: 'gone', to: 'r1', gap: 0 }),
+      selectionStep(state, { onDisk: ALL, type: 'selection-drop', identities: ['gone'], dragged: 'gone', to: 'r1', gap: 0 }),
       state,
     )
   })
@@ -120,21 +152,36 @@ describe('selection-drop', () => {
 describe('ignore-many', () => {
   it('ignores every listed clip of the set in one draft edit', () => {
     const state = target()
-    const next = selectionStep(state, { type: 'ignore-many', identities: [A2, B1, 'unknown.mp4'] })
+    const next = selectionStep(state, { onDisk: ALL, type: 'ignore-many', identities: [A2, B1, 'unknown.mp4'] })
     assert.deepEqual(lists(next), { r0: [A1, A3, A4], r1: [B2] })
     assert.deepEqual(ignoredNow(next.baseline, next.draft), [A2, B1])
     assert.equal(isDirty(next.baseline, next.draft), true)
   })
 
+  it('does not ignore a missing clip: it stays in its chapter, with no ignore entry', () => {
+    const state = target()
+    const next = selectionStep(state, {
+      onDisk: (identity) => identity !== A2,
+      type: 'ignore-many',
+      identities: [A1, A2],
+    })
+    assert.deepEqual(lists(next), { r0: [A2, A3, A4], r1: [B1, B2] })
+    assert.deepEqual(ignoredNow(next.baseline, next.draft), [A1])
+    assert.equal(
+      selectionStep(state, { onDisk: () => false, type: 'ignore-many', identities: [A1, A2] }),
+      state,
+    )
+  })
+
   it('is no change for a set none of whose clips a chapter plays', () => {
     const state = target()
-    assert.equal(selectionStep(state, { type: 'ignore-many', identities: ['gone'] }), state)
-    assert.equal(selectionStep(state, { type: 'ignore-many', identities: [] }), state)
+    assert.equal(selectionStep(state, { onDisk: ALL, type: 'ignore-many', identities: ['gone'] }), state)
+    assert.equal(selectionStep(state, { onDisk: ALL, type: 'ignore-many', identities: [] }), state)
   })
 
   it('is one Undo step, however many clips it ignores', () => {
     let history = cleared(target())
-    history = apply(history, { type: 'ignore-many', identities: [A1, A3, B2] })
+    history = apply(history, { onDisk: ALL, type: 'ignore-many', identities: [A1, A3, B2] })
     assert.equal(history.past.length, 1)
     assert.equal(undoLabel(history), 'ignore of 3 clips')
     const back = undo(history)
@@ -148,39 +195,39 @@ describe('ignore-many', () => {
 describe('the marks and the labels', () => {
   it('leaves the marks alone but for afterMove: a moved clip is unmarked', () => {
     const state = target([A2, A3, B2])
-    const moved = selectionStep(state, { type: 'selection-move', identities: [A2, B1], to: 'r1' })
+    const moved = selectionStep(state, { onDisk: ALL, type: 'selection-move', identities: [A2, B1], to: 'r1' })
     assert.deepEqual([...moved.marked].sort(), [A3, B2])
     assert.deepEqual([...moved.marked], [...afterMove(state.marked, [A2, B1])])
     const dropped = selectionStep(state, {
-      type: 'selection-drop',
+      onDisk: ALL, type: 'selection-drop',
       identities: [A2, A3],
       dragged: A2,
       to: 'r1',
       gap: 0,
     })
     assert.deepEqual([...dropped.marked], [B2])
-    const ignored = selectionStep(state, { type: 'ignore-many', identities: [A2, A3, B1] })
+    const ignored = selectionStep(state, { onDisk: ALL, type: 'ignore-many', identities: [A2, A3, B1] })
     assert.equal(ignored.marked, state.marked)
   })
 
   it('keeps the marks when the set moves no marked clip', () => {
     const state = target([A4])
-    const next = selectionStep(state, { type: 'selection-move', identities: [A1], to: 'r1' })
+    const next = selectionStep(state, { onDisk: ALL, type: 'selection-move', identities: [A1], to: 'r1' })
     assert.equal(next.marked, state.marked)
   })
 
   it('names a step by its clip or its count', () => {
     const { draft } = target()
-    const one = selectionLabel({ type: 'selection-move', identities: [A2], to: 'r1' }, { draft })
+    const one = selectionLabel({ onDisk: ALL, type: 'selection-move', identities: [A2], to: 'r1' }, { draft })
     assert.equal(one, 'move of a2.mp4')
-    const many = selectionLabel({ type: 'selection-move', identities: [A2, B1, 'gone'], to: 'r1' }, { draft })
+    const many = selectionLabel({ onDisk: ALL, type: 'selection-move', identities: [A2, B1, 'gone'], to: 'r1' }, { draft })
     assert.equal(many, 'move of 2 clips')
     const drop = selectionLabel(
-      { type: 'selection-drop', identities: [A2, A3, A4], dragged: A2, to: 'r1', gap: 0 },
+      { onDisk: ALL, type: 'selection-drop', identities: [A2, A3, A4], dragged: A2, to: 'r1', gap: 0 },
       { draft },
     )
     assert.equal(drop, 'move of 3 clips')
-    assert.equal(selectionLabel({ type: 'ignore-many', identities: [A1, A2] }, { draft }), 'ignore of 2 clips')
-    assert.equal(selectionLabel({ type: 'ignore-many', identities: [A1] }, { draft }), 'ignore of a1.mp4')
+    assert.equal(selectionLabel({ onDisk: ALL, type: 'ignore-many', identities: [A1, A2] }, { draft }), 'ignore of 2 clips')
+    assert.equal(selectionLabel({ onDisk: ALL, type: 'ignore-many', identities: [A1] }, { draft }), 'ignore of a1.mp4')
   })
 })
