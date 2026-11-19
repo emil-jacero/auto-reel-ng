@@ -59,17 +59,17 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 3. Verification and record
 
-- [ ] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`web-app`, `event-timeline`).
+- [x] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`web-app`, `event-timeline`).
   Also check that:
   - Space after clicking a mark checkbox in the bin plays and does not toggle the mark;
   - Space during a trim drag changes nothing;
   - a held Space does not flap between Play and Pause;
   - the frame-step gate still holds with the key coming through the workspace layer: p90 ≤ 60 ms over 40 Right
     presses, in Chromium.
-- [ ] 3.2 Record the change:
+- [x] 3.2 Record the change:
   - HLD: a D-28 "Shortcuts" bullet (the workspace layer, the last-input rule for Space, the 2.1.4 switch), and "Slice 6
     is built" in §6 item 10.
   - `docs/editor-workspace.md`: add row 6 `editor-shortcuts`, and mark row 5 `clip-split` dropped (its change was
     removed on `main` on 2026-11-18).
-- [ ] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate editor-shortcuts
+- [x] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate editor-shortcuts
   --strict`.

@@ -957,6 +957,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **Slice 3 is built** (`track-drag-edit`, web only; D-20, D-28): a clip block on the track drags to reorder it or
     move it to another chapter; bin<->track include/ignore; Alt+Left/Right; Clip tab Ignore clip; no API, engine or
     `RENDER_GRAPH_VERSION` change.
+    **Slice 6 is built** (`editor-shortcuts`, web only; D-28): the Timeline's keys (Space, the arrows, `+ - 0 \`, Q, W,
+    S, Alt+Left/Right) answer wherever focus is in the workspace, not only on the playhead grip or the track; a
+    "Keyboard shortcuts" list in the top bar (also `?`) and a switch that turns the single-key layer off; Ctrl+wheel
+    zooms over the whole Timeline part; no API, engine or `RENDER_GRAPH_VERSION` change. `clip-split` was dropped.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -2034,6 +2038,24 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     in one field coalesces into one step, and 200 steps are kept. Selection is not a draft edit and is not in the
     history. Save clears the history (the saved state is the new baseline), and Reset is itself a step that Undo takes
     back. Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y (`undoShortcut.ts`) and the top bar's Undo / Redo buttons drive it.
+  - **Shortcuts (change `editor-shortcuts`, slice 6).** The keys were each one element's own `onKeyDown`, so they were
+    dead after most clicks (after a click on the picture, Space did nothing). One `document` listener in `useTimeline`,
+    active only in the workspace, now runs pure rules (`web/src/edit/workspace/shortcuts.ts`) over the press and the
+    focus and gives the same actions the grip and the track already had; the focused element's own handler runs first,
+    so nothing on a field, a dialog, an open clip preview or a drag in progress is taken. Up, Down, Page Up, Page Down,
+    Home and End stay the grip's, since they scroll the panes.
+  - **The last-input rule for Space.** A button, checkbox or switch keeps Space when it was reached by Tab; after a
+    pointer press (`modality.ts`: the last of `pointerdown` and Tab) Space plays instead, so a click on Rotate then
+    Space no longer turns the clip again. Arrows do not change the record. A held Space neither toggles again nor
+    flaps between Play and Pause.
+  - **The list and the switch (WCAG 2.1.4).** A non-modal native popover (`#ws-keys`) in the top bar, opened by its
+    button or `?`, lists every key by group from one table (`SHORTCUTS`; a test keeps the table and the rules in
+    step), and Escape closes only the list. Its "Single-key shortcuts" switch turns the workspace layer off, back to the
+    keys that work on focus; it is kept in `localStorage` (`auto-reel:shortcuts=off`), and on when the browser keeps
+    nothing. Ctrl/Cmd+S, Z and Y are another listener and stay. Ctrl+wheel now zooms over the Timeline's whole part
+    (tool row, lanes, track), about the pointer on the track and about the playhead elsewhere; over the viewer, the bin
+    and the inspector the browser keeps it. J/K/L were not added. No API, engine or `RENDER_GRAPH_VERSION` change; no
+    new dependency.
   - **Not here:** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore edit), dragging on
     the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why

@@ -63,9 +63,10 @@ Pause.
 ### Requirement: The workspace lists its keyboard shortcuts
 
 The top bar SHALL hold a "Keyboard shortcuts" button at its right, and `?` SHALL open the list wherever a workspace
-shortcut acts. The list SHALL name, in words, every key the workspace layer answers, and the keys of the playhead, the track and the clip handles that share its keys (grouped Playback, Zoom, Editing and
-Mouse) and SHALL be built from the keys the workspace handles. It SHALL NOT be modal. Escape, the button or a click
-outside SHALL close it, and Escape SHALL then leave the selection as it is.
+shortcut acts. The list SHALL name, in words and grouped Playback, Zoom, Editing and Mouse, every key the workspace
+layer answers and every key of the playhead, the track and the clip handles that shares one, built from the keys the
+workspace handles. It SHALL NOT be modal. Escape, the button or a click outside SHALL close it, and Escape SHALL then
+leave the selection as it is.
 
 #### Scenario: Opening the list
 - **WHEN** the operator presses `?` with focus on the track
