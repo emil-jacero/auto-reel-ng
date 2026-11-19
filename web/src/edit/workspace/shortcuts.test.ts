@@ -279,6 +279,7 @@ test('the clip menu has its two rows, neither a workspace row', () => {
   assert.equal(keyed?.words, 'On a clip: open its menu')
   assert.equal(keyed?.scope, 'focused')
   const mouse = SHORTCUTS.find((row) => row.keys[0]?.[0] === 'Right-click a clip')
+  assert.deepEqual(mouse?.keys, [['Right-click a clip']])
   assert.equal(mouse?.group, 'Mouse')
   assert.equal(mouse?.words, 'Open its menu')
   assert.equal(mouse?.scope, 'mouse')
