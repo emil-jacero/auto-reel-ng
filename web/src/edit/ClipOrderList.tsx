@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { PointerEventHandler, ReactNode, RefObject } from 'react'
+import type { MouseEvent, PointerEventHandler, ReactNode, RefObject } from 'react'
 
 import type { Clip } from '../api/event'
 import { CutsPanel, CutsToggle } from '../cuts/CutsPanel'
@@ -286,6 +286,24 @@ const NONE_SELECTED: ReadonlySet<string> = new Set()
 export type SelectHandler = (identity: string, press: Press) => void
 /** The thumbnail's Watch: select the clip alone, show the player, focus its Play. */
 export type WatchHandler = (identity: string) => void
+
+/**
+ * A press on a bin row that is on none of its controls selects its clip (`editor-selection`): a
+ * control, the cuts panel or a mark takes its own press. Shift+click would otherwise leave the
+ * browser's text selection behind.
+ */
+function rowPress(identity: string, onSelectClip: SelectHandler) {
+  return (event: MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement
+    if (target.closest('button, input, a, label, select, textarea, [id^="cuts-"]') === null) {
+      const press = pressOf(event)
+      if (press === 'range') {
+        window.getSelection()?.removeAllRanges()
+      }
+      onSelectClip(identity, press)
+    }
+  }
+}
 const GRIP = <Icon name="grip-vertical" />
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
@@ -493,7 +511,8 @@ const ClipRow = memo(function ClipRow({
   const panelId = `cuts-${useId()}`
   // The bin's rows select their clip (`editor-selection`): a press on the row, or its name. The
   // row is scrolled into view when it becomes the selected one, with no move of focus.
-  const selectable = compact && cuttable
+  // Every compact row: the Clip tab edits a missing or an excluded clip as well.
+  const selectable = compact
   const rowRef = useRef<HTMLLIElement | null>(null)
   const rowNode = useCallback(
     (node: HTMLLIElement | null) => {
@@ -537,22 +556,7 @@ const ClipRow = memo(function ClipRow({
       ref={rowNode}
       className="clip-item"
       tabIndex={selectable ? -1 : undefined}
-      onClick={
-        selectable
-          ? (event) => {
-              // A control, the cuts panel or a mark takes its own press.
-              const target = event.target as HTMLElement
-              if (target.closest('button, input, a, label, select, textarea, [id^="cuts-"]') === null) {
-                const press = pressOf(event)
-                if (press === 'range') {
-                  // Shift+click would otherwise leave the browser's text selection behind.
-                  window.getSelection()?.removeAllRanges()
-                }
-                onSelectClip(identity, press)
-              }
-            }
-          : undefined
-      }
+      onClick={selectable ? rowPress(identity, onSelectClip) : undefined}
       data-identity={clip.identity}
       data-status={clip.status}
       data-excluded={clip.excluded || undefined}
@@ -649,6 +653,8 @@ export const IgnoredRow = memo(function IgnoredRow({
   chapter,
   locked,
   onInclude,
+  selected,
+  onSelectClip,
 }: {
   eventId: string
   clip: Clip
@@ -657,6 +663,9 @@ export const IgnoredRow = memo(function IgnoredRow({
   chapter: ChapterKey
   locked: boolean
   onInclude: IncludeHandler
+  /** The clip is the workspace's selected one (bin rows only). */
+  selected: boolean
+  onSelectClip: SelectHandler
 }) {
   // An ignored clip is dragged onto the video track to include it (`track-drag-edit`): the
   // pointer only, the bin has no slot for it; dropped elsewhere it stays ignored.
@@ -667,10 +676,14 @@ export const IgnoredRow = memo(function IgnoredRow({
     <li
       ref={setNodeRef}
       className="clip-item"
+      tabIndex={compact ? -1 : undefined}
+      onClick={compact ? rowPress(clip.identity, onSelectClip) : undefined}
       data-status={clip.status}
       data-identity={clip.identity}
       data-dragging={isDragging || undefined}
     >
+      {/* The selected row's ground, a leaf: the row itself carries no selection state (edit.css). */}
+      {compact && <span className="clip-sel" aria-hidden="true" data-on={selected || undefined} />}
       <button
         type="button"
         ref={setActivatorNodeRef}
@@ -702,6 +715,8 @@ export const IgnoredRow = memo(function IgnoredRow({
           </button>
         }
         length={compact ? lengthWords(clip.duration, NO_CUTS) : null}
+        selected={compact ? selected : null}
+        onSelect={onSelectClip}
       />
       {!compact && <span className="clip-moves" />}
     </li>
@@ -719,6 +734,8 @@ const RemovedRow = memo(function RemovedRow({
   locked,
   onUndo,
   compact,
+  selected,
+  onSelectClip,
 }: {
   eventId: string
   clip: Clip
@@ -726,6 +743,9 @@ const RemovedRow = memo(function RemovedRow({
   locked: boolean
   onUndo: (identity: string) => void
   compact: boolean
+  /** The clip is the workspace's selected one (bin rows only). */
+  selected: boolean
+  onSelectClip: SelectHandler
 }) {
   const { identity } = clip
   const undo = useMemo(
@@ -748,7 +768,16 @@ const RemovedRow = memo(function RemovedRow({
     [identity, name, locked, onUndo],
   )
   return (
-    <li className="clip-item" data-status={clip.status} data-identity={identity} data-removed>
+    <li
+      className="clip-item"
+      tabIndex={compact ? -1 : undefined}
+      onClick={compact ? rowPress(identity, onSelectClip) : undefined}
+      data-status={clip.status}
+      data-identity={identity}
+      data-removed
+    >
+      {/* The selected row's ground, a leaf: the row itself carries no selection state (edit.css). */}
+      {compact && <span className="clip-sel" aria-hidden="true" data-on={selected || undefined} />}
       <span className="drag-slot" />
       <RowBody
         eventId={eventId}
@@ -758,6 +787,8 @@ const RemovedRow = memo(function RemovedRow({
         was={null}
         action={undo}
         length={compact ? lengthWords(clip.duration, NO_CUTS) : null}
+        selected={compact ? selected : null}
+        onSelect={onSelectClip}
       />
       {!compact && <span className="clip-moves" />}
     </li>
@@ -1136,6 +1167,8 @@ export const ClipOrderList = memo(function ClipOrderList({
                   locked={locked}
                   onUndo={onUndoRow}
                   compact={compact}
+                  selected={selectedClips.has(identity)}
+                  onSelectClip={onSelectClip}
                 />
               )
             })}
@@ -1165,6 +1198,8 @@ export const ClipOrderList = memo(function ClipOrderList({
                   chapter={chapterKey}
                   locked={locked}
                   onInclude={onInclude}
+                  selected={selectedClips.has(identity)}
+                  onSelectClip={onSelectClip}
                 />
               )
             })}
@@ -1211,11 +1246,16 @@ export function IgnoredBin({
   nameOf,
   locked,
   onInclude,
+  selectedClips,
+  onSelectClip,
 }: {
   eventId: string
   groups: readonly IgnoredGroup[]
   locked: boolean
   onInclude: IncludeHandler
+  /** The selected clips (the bin's highlighted rows). */
+  selectedClips: ReadonlySet<string>
+  onSelectClip: SelectHandler
   clips: ReadonlyMap<string, Clip>
   /** How the group's chapter names its clips now. */
   nameOf: (group: IgnoredGroup) => (identity: string) => string
@@ -1252,6 +1292,8 @@ export function IgnoredBin({
                     chapter={group.key}
                     locked={locked}
                     onInclude={onInclude}
+                    selected={selectedClips.has(identity)}
+                    onSelectClip={onSelectClip}
                   />
                 )
               })}

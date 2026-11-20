@@ -26,12 +26,11 @@ import type { IconName } from '../ui/Icon'
 import { Menu } from '../ui/Menu'
 import type { MenuClose } from '../ui/Menu'
 import { mayReturnFocus } from '../ui/returnFocus'
-import { ClipHeader } from './ClipHeader'
 import { clipMenu, focusAfter, focusAfterMany, menuSelects, targets } from './clipMenu'
 import type { ClipAction } from './clipMenu'
-import { clipPlace, clipSelectedWords, cutSelectedWords } from './clipPanel'
+import { clipPlace, clipSelectedWords, cutSelectedWords, lengthWords } from './clipPanel'
 import { addCutAtPlayhead, cutAtClipPlayhead } from './cutAtPlayhead'
-import { ClipGroupTab, ClipTab } from './ClipTab'
+import { ClipTrackPart } from './ClipTrackPart'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
 import { posterFromPlayhead, USE_AS_POSTER } from '../edit/poster.ts'
@@ -201,16 +200,19 @@ export type TimelineProps = {
 }
 
 /**
- * The Timeline's three parts over one state (design D2 of `editor-workspace-layout`): the viewer
+ * The Timeline's parts over one state (design D2 of `editor-workspace-layout`): the viewer
  * (the picture and the transport), the track (the tool row, the lanes and their notes), the clip
- * panel (the selected clip's header and cut's fields) and the suggestion panel (the selected
- * suggestion's decision). Each is its own
+ * panel (the track-only part of the Clip tab: trims, cuts, poster, and the selected cut's fields)
+ * and the suggestion panel (the selected suggestion's decision). Each is its own
  * `.timeline` box, so it can sit in a pane of its own; there is still one `<video>`.
  */
 export type TimelineParts = {
   viewer: ReactNode
   track: ReactNode
-  /** The selected clip's header and the selected cut's fields (the inspector's Clip tab). */
+  /**
+   * What the Clip tab needs the track for (`ClipTrackPart`) and the selected cut's fields: put into
+   * the slot of the editor's `ClipInspector`, for a clip the track draws.
+   */
   clipPanel: ReactNode
   /** The selected suggestion's decision (the inspector's Suggestion tab). */
   suggestionPanel: ReactNode
@@ -223,17 +225,14 @@ export type TimelineParts = {
 export function Timeline(props: TimelineProps) {
   const parts = useTimeline(props)
   const panes = useContext(TimelinePanesContext)
-  if (
-    panes !== null &&
-    panes.viewer !== null &&
-    panes.clip !== null &&
-    panes.suggestion !== null
-  ) {
+  // The clip pane is the editor's `ClipInspector` slot, there only while a clip a chapter plays is
+  // selected: without it there is nowhere for the track-only part to go, and it renders nothing.
+  if (panes !== null && panes.viewer !== null && panes.suggestion !== null) {
     return (
       <>
         {createPortal(parts.viewer, panes.viewer)}
         {parts.track}
-        {createPortal(parts.clipPanel, panes.clip)}
+        {panes.clip !== null && createPortal(parts.clipPanel, panes.clip)}
         {createPortal(parts.suggestionPanel, panes.suggestion)}
       </>
     )
@@ -526,10 +525,8 @@ export function useTimeline({
     }
   }, [heldClip, clips])
 
-  // A clip that left the event ends its selection (`keptSelection`).
-  useEffect(() => {
-    keepSelection({ clips: new Set(clips.map((c) => c.identity)) })
-  }, [clips, keepSelection])
+  // A clip that left the event ends its selection (`keptSelection`): the editor's, which knows the
+  // clips the track does not draw (ignored, missing) that the Clip tab still shows.
 
   const scroller = useRef<HTMLDivElement>(null)
   const grip = useRef<HTMLDivElement>(null)
@@ -1708,49 +1705,33 @@ export function useTimeline({
     [clips, panelClip, chapterNames],
   )
   const panelClipRow = panelClip === null ? undefined : clips.find((c) => c.identity === panelClip)
-  // Two or more selected clips, as the track draws them: the group tab (`clip-multi-select` D5).
-  const groupClips = useMemo(
-    () => (selectedSet.size > 1 ? clips.filter((c) => selectedSet.has(c.identity)) : []),
-    [clips, selectedSet],
-  )
-  // Ignore clips ignored the group: the selection ends, and focus moves to a clip that stays.
-  const ignoredGroup = (identities: readonly string[]) => {
-    ignoredFocus.current = {
-      next: focusAfterMany(
-        clips.map((c) => c.identity),
-        identities,
-      ),
-    }
-    selection.clear()
-  }
-  const clipPanel = groupClips.length > 1 ? (
+  // The track-only part of the Clip tab (`clip-tab-and-player` D5), for the one clip the track
+  // draws; the editor's `ClipInspector` has the rest. The group tab is the editor's too.
+  const clipPanel = (
     <div className="timeline tl-cut-panel">
-      <ClipGroupTab
-        clips={groupClips}
-        chapters={reorder.chapters}
-        editing={editing}
-        onIgnored={ignoredGroup}
-      />
-    </div>
-  ) : (
-    <div className="timeline tl-cut-panel">
-      {place !== null && <ClipHeader place={place} />}
       {panelClipRow !== undefined && (
-        <ClipTab
-          clip={panelClipRow}
-          clips={clips}
-          editing={editing}
-          drag={drag}
-          playhead={playhead}
-          selectedKey={selected?.identity === panelClipRow.identity ? selected.key : null}
-          onSelectCut={select}
-          onSelectClip={selectClip}
-          poster={posterControl('-clip', 'Use frame as poster', panelClipRow)}
-          chapters={reorder.chapters}
-          onMoveToEnd={moveToEnd}
-        />
+        <>
+          <ClipTrackPart
+            clip={panelClipRow}
+            clips={clips}
+            length={place === null ? null : lengthWords(place)}
+            editing={editing}
+            drag={drag}
+            playhead={playhead}
+            selectedKey={selected?.identity === panelClipRow.identity ? selected.key : null}
+            onSelectCut={select}
+            onSelectClip={selectClip}
+            poster={posterControl('-clip', 'Use frame as poster', panelClipRow)}
+          />
+          <CutFields
+            selected={selected}
+            clips={clips}
+            editing={editing}
+            drag={drag}
+            hintId={cutHintId}
+          />
+        </>
       )}
-      <CutFields selected={selected} clips={clips} editing={editing} drag={drag} hintId={cutHintId} />
     </div>
   )
   // The selection announced once through the status below, when it changes to something: a

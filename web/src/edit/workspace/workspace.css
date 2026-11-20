@@ -174,7 +174,7 @@
     display: none;
   }
 
-  /* The Clip tab's header (`timeline/ClipHeader.tsx`): the clip, where it stands, how long it is. */
+  /* The Clip tab's header (`edit/ClipInspector.tsx`): the clip, where it stands, how long it is. */
   .tl-clip-head {
     display: grid;
     gap: var(--s-1);
@@ -191,11 +191,12 @@
   }
 
   .tl-clip-where,
+  .tl-clip-status,
   .tl-clip-length {
     color: var(--fg-muted);
   }
 
-  /* The Clip tab's controls (`timeline/ClipTab.tsx`): trim fields and rotate, cuts, poster. */
+  /* The Clip tab's controls (`timeline/ClipTrackPart.tsx`, `edit/ClipInspector.tsx`): moves and rotate, trim fields, cuts, poster. */
   .ct-tab {
     display: grid;
     gap: var(--s-3);
@@ -206,6 +207,26 @@
      would add a column beside the trim fields and the cuts. */
   .ct-tab > .tl-poster {
     grid-area: auto;
+  }
+
+  /* Move earlier, Move later and Rotate on one wrapping row; a finger's touch areas (components.css)
+     reach 12px outward, so the rows' lines keep 1rem apart and no area covers another control. */
+  .ct-steps {
+    align-items: center;
+
+    @media (pointer: coarse) {
+      gap: var(--s-4);
+    }
+  }
+
+  /* The clip's length (the track part's first line): the track's label rule would push it right. */
+  .ct-track > .tl-clip-length {
+    margin: 0;
+  }
+
+  /* What the Timeline puts in the Clip tab (`ClipTrackPart`): nothing for a clip it does not draw. */
+  .ct-track-slot:not(:has(.tl-cut-panel > *)) {
+    display: none;
   }
 
   /* Ignore clip sits at the tab's end, by its own content width. */

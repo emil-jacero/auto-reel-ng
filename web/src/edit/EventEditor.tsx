@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { ReactNode } from 'react'
 
 import type { Clip, EventDetail } from '../api/event'
 import type { EventFailure, Problem } from '../api/events'
@@ -54,6 +55,7 @@ import type { EventStyle } from './card/specs.ts'
 import type { EditBinding, TrackBridge } from '../timeline/editing'
 import { applyDrop, includeIndex } from '../timeline/reorder'
 import { MOVE_LOCKED } from '../timeline/clipDrag'
+import { focusAfterMany } from '../timeline/clipMenu'
 import type { EdgeEdit } from '../timeline/edgeTrim.ts'
 import type { Dismissals } from '../timeline/overlays/Dismissals'
 import type { AnalysisBinding } from '../analysis/useEventAnalysis'
@@ -87,7 +89,19 @@ import { ChapterDrag } from './ChapterDrag'
 import { ChapterList } from './ChapterList'
 import type { ChapterRowModel } from './ChapterList'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
+import { ClipGroupTab } from './ClipGroupTab'
+import { ClipInspector } from './ClipInspector'
+import {
+  clipState,
+  draftPlace,
+  moveToEndWords,
+  offersOf,
+  statusWords,
+  stepAcrossWords,
+  stepWords as clipStepWords,
+} from './clipInspector.ts'
 import { ClipOrderList, IgnoredBin } from './ClipOrderList'
+import { stepMove } from './stepMove.ts'
 import { selectionLabel, selectionStep } from './selectionEdit.ts'
 import type { SelectionEdit } from './selectionEdit.ts'
 import type {
@@ -1146,7 +1160,9 @@ function nameNow(
   const chapter =
     draft.chapters.find((listed) => (draft.orders.get(listed.key) ?? []).includes(identity)) ??
     // An ignored clip is named by the chapter that lists it among its ignored clips.
-    draft.chapters.find((listed) => (ignoredOf.get(listed.key) ?? []).includes(identity))
+    draft.chapters.find((listed) => (ignoredOf.get(listed.key) ?? []).includes(identity)) ??
+    // A removed one, by the chapter whose removed list holds it.
+    draft.chapters.find((listed) => (removedOf.get(listed.key) ?? []).includes(identity))
   if (chapter === undefined) {
     return identity
   }
@@ -2397,8 +2413,16 @@ export function EventEditor({
   const binSelection = useDeferredValue(cards.selection)
   const selectedSet = useMemo(() => new Set(selectedClips(binSelection)), [binSelection])
   const selectedCache = useRef(new Map<string, ReadonlySet<string>>())
-  const selectedIn = (chapter: ChapterKey, order: readonly string[]): ReadonlySet<string> => {
-    const next = selectedSet.size === 0 ? [] : order.filter((identity) => selectedSet.has(identity))
+  const selectedIn = (
+    chapter: ChapterKey,
+    order: readonly string[],
+    ...also: readonly (readonly string[])[]
+  ): ReadonlySet<string> => {
+    // The clips a chapter lists but does not play (ignored, removed) are selectable rows too.
+    const next =
+      selectedSet.size === 0
+        ? []
+        : [order, ...also].flatMap((list) => list.filter((identity) => selectedSet.has(identity)))
     if (next.length === 0) {
       selectedCache.current.delete(chapter)
       return NO_CLIPS
@@ -2435,7 +2459,14 @@ export function EventEditor({
                   )
                 }),
           )
-    cards.set(pressClip(cards.selection, identity, press, order))
+    // Only a clip the track draws joins a set: an ignored, a missing or an excluded clip is selected
+    // alone (its Clip tab edits that one clip), and a press with a modifier while one is selected
+    // starts a new selection rather than add to it.
+    const joins = (candidate: string) => canMark(clips.get(candidate))
+    const alone =
+      press !== 'alone' &&
+      (!joins(identity) || selectedClips(cards.selection).some((held) => !joins(held)))
+    cards.set(pressClip(cards.selection, identity, alone ? 'alone' : press, order))
   }
   const selectClip = useCallback((identity: string, press: Press) => binPress.current(identity, press), [])
   // A row's Watch (its thumbnail): the clip alone is selected, the player is shown, and Play takes
@@ -2446,6 +2477,15 @@ export function EventEditor({
     binPress.current(identity, 'alone')
     setWatchAsk((asked) => asked + 1)
   }, [])
+  // A clip that left the event ends its selection (`keptSelection`). The clips the event lists, not
+  // the ones the track draws: the Clip tab also shows an ignored or a missing clip.
+  useEffect(() => {
+    if (detail !== null) {
+      keepSelection({ clips: new Set(clips.keys()) })
+    }
+  }, [detail, clips, keepSelection])
+  // The Clip tab's slot for the Timeline's track-only part (`ClipInspector`), once it is mounted.
+  const [clipSlot, setClipSlot] = useState<HTMLElement | null>(null)
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
@@ -2946,6 +2986,144 @@ export function EventEditor({
   useLayoutEffect(() => {
     rotateRef.current = onRotate
   }, [onRotate])
+  // The Clip tab's Move earlier and Move later (`clip-tab-and-player` D6): one place in the chapter's
+  // play order, as Move up and Move down, or into the next chapter at an edge, as Alt and an arrow.
+  // The same draft edits and the same words; a step that cannot be made says why.
+  const onStepClip = useCallback(
+    (identity: string, way: -1 | 1) => {
+      const current = latest.current
+      if (!idle(current)) {
+        announce(MOVE_LOCKED)
+        return
+      }
+      const lists = listedChapters(current.draft.chapters).map((chapter) => ({
+        key: chapter.key,
+        identities: current.draft.orders.get(chapter.key) ?? NONE_REMOVED,
+      }))
+      if (!lists.some((list) => list.identities.includes(identity))) {
+        return
+      }
+      const step = stepMove(lists, identity, way, clips.get(identity)?.status === 'missing')
+      if (step.kind === 'edge') {
+        announce(step.words)
+      } else if (step.kind === 'move') {
+        dispatch({ type: 'move', chapter: step.chapter, from: step.from, to: step.to })
+        const length = lists.find((list) => list.key === step.chapter)?.identities.length ?? 0
+        announce(clipStepWords(nameOfClip(identity), step.to, length))
+      } else {
+        dispatch({ type: 'clip-drop', from: step.from, to: step.to, identity, at: step.at })
+        const there = lists.find((list) => list.key === step.to)?.identities ?? NONE_REMOVED
+        announce(
+          stepAcrossWords(identity, headingIn(current.draft, step.to), there[step.at] ?? null),
+        )
+      }
+    },
+    [announce, clips, nameOfClip],
+  )
+
+  // Move to… of one clip (the Clip tab's): at the end of the chosen chapter, the edit a drop on its
+  // band makes. Only a clip on disk that a chapter plays moves.
+  const onMoveClipToEnd = useCallback(
+    (identity: string, to: ChapterKey) => {
+      const current = latest.current
+      if (!idle(current)) {
+        announce(MOVE_LOCKED)
+        return
+      }
+      const from = [...current.draft.orders].find(([, order]) => order.includes(identity))?.[0]
+      const target = current.draft.orders.get(to)
+      if (
+        from === undefined ||
+        from === to ||
+        target === undefined ||
+        !isListed(current.draft, to) ||
+        !onDisk(clips.get(identity))
+      ) {
+        return
+      }
+      dispatch({ type: 'clip-drop', from, to, identity, at: target.length })
+      announce(moveToEndWords(identity, headingIn(current.draft, to)))
+    },
+    [announce, clips],
+  )
+
+  // Remove from reel.yaml and its Undo, from the Clip tab: the row controls' edits and words (a
+  // missing clip only). The row's own focus handling does not run: the tab's button keeps focus.
+  const onRemoveClipFromTab = useCallback(
+    (identity: string) => {
+      const current = latest.current
+      if (!idle(current)) {
+        announce(MOVE_LOCKED)
+        return
+      }
+      const chapter = [...current.draft.orders].find(([, order]) => order.includes(identity))?.[0]
+      if (chapter === undefined || clips.get(identity)?.status !== 'missing') {
+        return
+      }
+      dispatch({ type: 'remove', chapter, identity })
+      announce(`${nameOfClip(identity)} will be removed from reel.yaml when you save.`)
+    },
+    [announce, clips, nameOfClip],
+  )
+  const onRestoreClipFromTab = useCallback(
+    (identity: string) => {
+      const current = latest.current
+      if (!idle(current)) {
+        announce(MOVE_LOCKED)
+        return
+      }
+      const chapter = current.draft.removed.get(identity)
+      if (chapter === undefined || !isListed(current.draft, chapter)) {
+        return
+      }
+      const orders = restoreClip(
+        current.draft.orders,
+        chapter,
+        identity,
+        current.baseline.original.get(chapter) ?? [],
+      )
+      const order = orders.get(chapter) ?? NONE_REMOVED
+      dispatch({ type: 'restore', identity })
+      announce(
+        `${nameOfClip(identity)} is back at position ${order.indexOf(identity) + 1} of ${order.length}.`,
+      )
+    },
+    [announce, nameOfClip],
+  )
+
+  // Ignore clips ignored the group (the Clip tab's): nothing stays selected, and focus goes to the
+  // clip that stays next to the ones ignored on the track, or to the track.
+  const groupFocus = useRef<string | null | undefined>(undefined)
+  const onGroupIgnored = useCallback(
+    (identities: readonly string[]) => {
+      const current = latest.current
+      const drawn =
+        current === null
+          ? []
+          : listedChapters(current.draft.chapters)
+              .flatMap((chapter) => current.draft.orders.get(chapter.key) ?? NONE_REMOVED)
+              .filter((identity) => onDisk(clips.get(identity)))
+      groupFocus.current = focusAfterMany(drawn, identities)
+      cards.clear()
+    },
+    [cards.clear, clips],
+  )
+  useLayoutEffect(() => {
+    const next = groupFocus.current
+    if (next === undefined || cards.selection.kind !== 'none') {
+      return
+    }
+    groupFocus.current = undefined
+    const active = document.activeElement
+    if (active !== null && active !== document.body) {
+      return
+    }
+    const block = Array.from(
+      document.querySelectorAll<HTMLElement>('.tl-clip-press[data-identity]'),
+    ).find((candidate) => candidate.dataset.identity === next)
+    ;(block ?? document.querySelector<HTMLElement>('.tl-viewport'))?.focus({ preventScroll: true })
+  })
+
   // Rotate marked left / right: every marked clip on disk, each from its own turn, one edit.
   // The marks stay.
   const onRotateMarked = useCallback(
@@ -3374,6 +3552,91 @@ export function EventEditor({
   const newClipsText = newClipsLine(adopted, newClips.size > 0, plural(adopted, 'new clip', 'new clips'))
   const clipCount = chapters.reduce((sum, chapter) => sum + chapter.movable.length, 0)
 
+  // The inspector's Clip tab (`clip-tab-and-player` D5), built from the draft and the read, so it is
+  // there with no track (Prepare) and for a clip the track does not draw: the clips of a set, or the
+  // one clip (or cut's clip) selected. Null while no clip is selected.
+  let clipTab: ReactNode = null
+  const tabSelection = cards.selection
+  if (ready !== null && detail !== null && editing !== null) {
+    const { draft, baseline } = ready
+    const nameFor = (identity: string) =>
+      nameNow(draft, baseline.original, identity, ignoredOf, removedByChapter)
+    const lists = listedChapters(draft.chapters)
+    const chapterChoices = lists.map((chapter) => ({
+      key: chapter.key,
+      name: chapterHeading(chapter.name, hasNamedChapter),
+    }))
+    if (tabSelection.kind === 'clips') {
+      const held = new Set(selectedClips(tabSelection))
+      const played = lists
+        .flatMap((chapter) => draft.orders.get(chapter.key) ?? NONE_REMOVED)
+        .filter((identity) => held.has(identity))
+      // Only the five names the tab shows are worked out: a range over 400 clips costs no more.
+      clipTab = (
+        <ClipGroupTab
+          clips={played.map((identity, at) => ({
+            identity,
+            name: at < 5 ? nameFor(identity) : identity,
+          }))}
+          chapters={chapterChoices}
+          editing={editing}
+          onIgnored={onGroupIgnored}
+        />
+      )
+    } else {
+      const identity = tabSelection.kind === 'cut' ? tabSelection.identity : lastClip(tabSelection)
+      const clip = identity === null ? undefined : clips.get(identity)
+      if (identity !== null && clip !== undefined) {
+        const own = lists.find((chapter) => (draft.orders.get(chapter.key) ?? []).includes(identity))
+        const state = clipState({
+          status: clip.status,
+          played: own !== undefined,
+          removed: draft.removed.has(identity),
+        })
+        const offers = offersOf(state)
+        const steps = lists.map((chapter) => ({
+          key: chapter.key,
+          identities: draft.orders.get(chapter.key) ?? NONE_REMOVED,
+        }))
+        const edge = (way: -1 | 1): string | null => {
+          if (!offers.step || own === undefined) {
+            return null
+          }
+          const step = stepMove(steps, identity, way, clip.status === 'missing')
+          return step.kind === 'edge' ? step.words : null
+        }
+        const ignoredIn = [...ignoredOf].find(([, identities]) => identities.includes(identity))?.[0]
+        clipTab = (
+          <ClipInspector
+            identity={identity}
+            name={nameFor(identity)}
+            place={draftPlace(draft.chapters, draft.orders, [ignoredOf, removedByChapter], identity)}
+            state={state}
+            status={statusWords(state, clip)}
+            chapters={chapterChoices}
+            own={own?.key ?? null}
+            editing={editing}
+            edges={{ earlier: edge(-1), later: edge(1) }}
+            onStep={(way) => onStepClip(identity, way)}
+            onMoveTo={(to) => onMoveClipToEnd(identity, to)}
+            onEnd={() => {
+              if (offers.action === 'ignore') {
+                editing.onIgnore(identity)
+              } else if (offers.action === 'include' && ignoredIn !== undefined) {
+                onIncludeClip(ignoredIn, identity)
+              } else if (offers.action === 'remove') {
+                onRemoveClipFromTab(identity)
+              } else if (offers.action === 'undo') {
+                onRestoreClipFromTab(identity)
+              }
+            }}
+            slot={setClipSlot}
+          />
+        )
+      }
+    }
+  }
+
   // The editor's parts, placed by the layout: stacked in the page, or in the workspace's panes.
   const parts =
     ready === null
@@ -3700,6 +3963,8 @@ export function EventEditor({
                       selectedClips={selectedIn(
                         chapter.key,
                         ready.draft.orders.get(chapter.key) ?? NONE_REMOVED,
+                        ignoredOf.get(chapter.key) ?? NONE_REMOVED,
+                        removedByChapter.get(chapter.key) ?? NONE_REMOVED,
                       )}
                       leadClip={leadIn(ready.draft.orders.get(chapter.key) ?? NONE_REMOVED)}
                       onSelectClip={selectClip}
@@ -3717,6 +3982,8 @@ export function EventEditor({
                     clips={clips}
                     locked={listsLocked}
                     onInclude={onIncludeClip}
+                    selectedClips={selectedSet}
+                    onSelectClip={selectClip}
                     nameOf={(group) =>
                       namesIn(
                         group.name,
@@ -4002,6 +4269,8 @@ export function EventEditor({
             </>}
           player={parts?.player ?? null}
           bin={parts?.bin ?? null}
+          clip={clipTab}
+          clipSlot={clipSlot}
           event={
             <>
               {parts?.details}
