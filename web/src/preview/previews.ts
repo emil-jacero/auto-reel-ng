@@ -7,8 +7,8 @@
  * Its life is the editor's: leaving Edit mode drops it, and with it every length.
  */
 
-/** Who opened a preview: where Close and Escape return keyboard focus. */
-export type Opener = 'toggle' | 'thumb'
+/** Who opened a preview: where Close and Escape return keyboard focus. `player` is the bin's own Play. */
+export type Opener = 'toggle' | 'thumb' | 'player'
 
 /** The editor's previews: which clip's is open, and what a remount or a later check needs. */
 export type ClipPreviews = {

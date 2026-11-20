@@ -48,9 +48,19 @@
     scroll-padding-block: calc(var(--panel-head-h) + var(--s-2)) var(--s-2);
   }
 
-  .ws-bin {
+  /* The bin's column: the player (it never scrolls), then the scroll box with the lists. */
+  .ws-binbox {
     grid-area: bin;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
     border-inline-end: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .ws-bin {
+    flex: 1 1 auto;
     background: var(--surface);
   }
 
@@ -340,7 +350,7 @@
       position: static;
     }
 
-    .ws-bin {
+    .ws-binbox {
       order: 4;
     }
   }

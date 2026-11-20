@@ -27,7 +27,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 2. Wiring (web/src/edit, web/src/preview, web/src/timeline)
 
-- [ ] 2.1 `BinPlayer` at the top of the bin (design D2): the closed and open states, Hide and Show player, and Escape.
+- [x] 2.1 `BinPlayer` at the top of the bin (design D2): the closed and open states, Hide and Show player, and Escape.
   The preview leaves `CutsPanel`, and the player counts as a clip preview for the workspace keys. Verify with `npm
   test` and `npm run check`, then in Playwright with the scenarios of "Edit mode previews a clip on request", "A
   clip's preview plays its preview copy when one is ready", "Edit mode holds one video at a time" and "Space on the

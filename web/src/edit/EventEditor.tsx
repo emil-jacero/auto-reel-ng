@@ -81,6 +81,8 @@ import {
   laterClipNotes,
   nameDialogNote,
 } from './chapterNames'
+import { BinPlayer } from './BinPlayer'
+import { setBinPlayerShown } from './binPlayerPref.ts'
 import { ChapterDrag } from './ChapterDrag'
 import { ChapterList } from './ChapterList'
 import type { ChapterRowModel } from './ChapterList'
@@ -2453,6 +2455,14 @@ export function EventEditor({
     cards.set(pressClip(cards.selection, identity, press, order))
   }
   const selectClip = useCallback((identity: string, press: Press) => binPress.current(identity, press), [])
+  // A row's Watch (its thumbnail): the clip alone is selected, the player is shown, and Play takes
+  // keyboard focus once the player shows the clip. Nothing plays, nothing loads.
+  const [watchAsk, setWatchAsk] = useState(0)
+  const watchClip = useCallback((identity: string) => {
+    setBinPlayerShown(true)
+    binPress.current(identity, 'alone')
+    setWatchAsk((asked) => asked + 1)
+  }, [])
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
   useEffect(() => {
     if (draftChapters !== undefined) {
@@ -3508,6 +3518,25 @@ export function EventEditor({
             />
           )}
           </>,
+          // The bin's player: the one clip preview, above the bin's scroll box.
+          player: <>
+          {detail !== null && (
+            <BinPlayer
+              eventId={eventId}
+              selection={cards.selection}
+              clips={clips}
+              nameOf={(identity) =>
+                nameNow(ready.draft, ready.baseline.original, identity, ignoredOf, removedByChapter)
+              }
+              cutsOf={(identity) => cutsOf(ready.baseline.cuts, ready.draft.cuts, identity)}
+              turnOf={(identity) => draftTurns.get(identity) ?? 0}
+              locked={listsLocked}
+              previews={cutPanels.panels.previews}
+              focusAsk={watchAsk}
+              onAnnounce={announce}
+            />
+          )}
+          </>,
           bin: <>
           {detail !== null && newClipsText !== null && !inWorkspace && (
             <div className="edit-hint">
@@ -3690,6 +3719,7 @@ export function EventEditor({
                       )}
                       leadClip={leadIn(ready.draft.orders.get(chapter.key) ?? NONE_REMOVED)}
                       onSelectClip={selectClip}
+                      onWatchClip={watchClip}
                       ignoredApart={ignoredApart}
                     />
                   ),
@@ -3888,6 +3918,7 @@ export function EventEditor({
               {parts.chapters}
               {parts.poster}
               {parts.timeline}
+              {parts.player}
               {parts.bin}
               {parts.saveBar}
             </>
@@ -3985,6 +4016,7 @@ export function EventEditor({
         />
       )}
             </>}
+          player={parts?.player ?? null}
           bin={parts?.bin ?? null}
           event={
             <>

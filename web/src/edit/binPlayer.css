@@ -1,0 +1,63 @@
+/*
+ * The bin's player (`BinPlayer.tsx`): a column above the bin's scroll box, so it never scrolls
+ * away. Tokens only, no motion. The preview inside is `preview/preview.css`'s.
+ */
+@layer screens {
+  .bin-player {
+    flex: none;
+    display: grid;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-3);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface);
+    font-size: var(--text-sm);
+  }
+
+  .bin-player-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+    min-block-size: 1.75rem;
+  }
+
+  /* One line: the clip's name takes what the heading leaves and then an ellipsis. */
+  .bin-player-title {
+    display: flex;
+    gap: var(--s-2);
+    min-inline-size: 0;
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+
+    & > .bin-player-clip {
+      min-inline-size: 0;
+      overflow: hidden;
+      color: var(--fg-muted);
+      font-weight: 400;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .bin-player-show,
+  .bin-player-hide {
+    flex: none;
+  }
+
+  .bin-player-none {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+
+  /* The preview's own head holds the time and Hide player; the heading above names the clip. */
+  .bin-player .clip-preview {
+    max-inline-size: 40rem;
+    gap: var(--s-1);
+  }
+
+  /* Closed, the thumbnail is a Play target of its own. */
+  .bin-player[data-state='closed'] .preview-stage {
+    cursor: pointer;
+  }
+}

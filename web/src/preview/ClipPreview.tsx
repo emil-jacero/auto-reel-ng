@@ -29,6 +29,7 @@ import { Pill } from '../ui/Pill'
 import {
   ALL_CUT,
   LOADING,
+  NOT_LOADED,
   PLAYHEAD_KEYS,
   SET_WORDS,
   SKIP_CUTS,
@@ -41,6 +42,7 @@ import {
   emptyWords,
   formatWords,
   goneWords,
+  hidePlayerName,
   noPictureWords,
   noSoundWords,
   offersSkip,
@@ -89,6 +91,11 @@ import type { ClipProxy } from './source'
  * cuts drawn on the bar, Skip cuts as a view option. It exists only while open
  * (`previews.ts`: one on the page), and its file is fetched only from then on.
  *
+ * The bin's player (`edit/BinPlayer.tsx`) docks it (`onHide`): `open={false}` draws the clip's thumbnail
+ * where the video would be and creates no video element and no media request, `onOpen` is what
+ * its Play does then, and Close becomes Hide player. The caller keys it by `open`, so an opened
+ * or a closed player starts from a clean state.
+ *
  * It plays the clip's preview copy (D-21) when the event detail says one is ready, and
  * the original otherwise or when the operator presses Play original (`source.ts`). The
  * copy has the original's media time, so every time below means the same in both files.
@@ -124,6 +131,7 @@ const CutBar = memo(function CutBar({
   valueText,
   valueMs,
   keysId,
+  loadingText,
   onKey,
   onPointer,
 }: {
@@ -136,6 +144,8 @@ const CutBar = memo(function CutBar({
   /** What the slider says: follows seeks at once, playback at most once a second. */
   valueMs: number
   keysId: string
+  /** What the slider says while the clip's length is unknown. */
+  loadingText: string
   onKey: (event: KeyboardEvent<HTMLDivElement>) => void
   onPointer: {
     down: (event: PointerEvent<HTMLDivElement>) => void
@@ -154,7 +164,7 @@ const CutBar = memo(function CutBar({
       aria-valuemin={0}
       aria-valuemax={lengthMs === null ? 0 : lengthMs / 1000}
       aria-valuenow={lengthMs === null ? 0 : valueMs / 1000}
-      aria-valuetext={lengthMs === null ? LOADING : valueText}
+      aria-valuetext={lengthMs === null ? loadingText : valueText}
       aria-describedby={keysId}
       onKeyDown={onKey}
       onPointerDown={onPointer.down}
@@ -313,6 +323,10 @@ export const ClipPreview = memo(function ClipPreview({
   locked = false,
   turn = 0,
   previews,
+  open = true,
+  autoPlay = false,
+  onOpen,
+  onHide,
   onSet,
   onClose,
   onAnnounce,
@@ -333,6 +347,19 @@ export const ClipPreview = memo(function ClipPreview({
   turn?: Turn
   previews: ClipPreviews
   /**
+   * Whether the preview is open: it holds a video for the clip. Closed, it shows the clip's
+   * thumbnail, loads nothing, and its Play calls `onOpen`.
+   */
+  open?: boolean
+  /** Play as soon as the clip has been read: the closed player's Play opened it. */
+  autoPlay?: boolean
+  onOpen?: () => void
+  /**
+   * The bin's player: given, the head's button is Hide player and calls this; `onClose` is then
+   * only Escape's (the preview closes, the selection stays).
+   */
+  onHide?: () => void
+  /**
    * Set From / Set To at the playhead. Given none, the player is read-only (the event page's
    * read view): it has no Set buttons, offers Skip cuts only for a clip with cuts, and its
    * advice after a clip that is gone or changed is to press Refresh, not to stop editing.
@@ -343,6 +370,7 @@ export const ClipPreview = memo(function ClipPreview({
 }) {
   const { identity, mtime } = clip
   const readOnly = onSet === undefined
+  const docked = onHide !== undefined
   // The original's address: also the key of the clip's length, whichever file plays.
   const originalSrc = clipMediaUrl(eventId, clip)
   const source = useMemo(() => previewSource(proxy), [proxy])
@@ -358,7 +386,9 @@ export const ClipPreview = memo(function ClipPreview({
   const [probed, setProbed] = useState<{ attempt: number; version: string } | null>(null)
   // A file swap is under way: the clip's length and the time shown stay.
   const [swapping, setSwapping] = useState(false)
-  const src = playsCopy
+  const src = !open
+    ? null
+    : playsCopy
     ? probed !== null && probed.attempt === attempt
       ? proxyUrl(eventId, clip, probed.version)
       : null
@@ -370,6 +400,8 @@ export const ClipPreview = memo(function ClipPreview({
     picture: false,
   })
   const [playing, setPlaying] = useState(false)
+  // The closed player's thumbnail could not be shown: its box says so, and Play still opens the clip.
+  const [thumbFailed, setThumbFailed] = useState(false)
   const [skip, setSkip] = useState(false)
   // The shown frame's time (the head), and what the slider says (at most once a
   // second while playing, so a focused slider is not read out on every frame).
@@ -393,7 +425,7 @@ export const ClipPreview = memo(function ClipPreview({
   // Try again opens the preview anew: Play takes focus, as on Watch.
   const focusPlay = useRef(false)
   // Play pressed before the clip's metadata was read: it plays once it can.
-  const pendingPlay = useRef(false)
+  const pendingPlay = useRef(autoPlay)
   // Opened by Watch, the thumbnail or Try again (not remounted by a move): say when it is ready.
   const sayReady = useRef(false)
   // The announcement of a file swap, said with the notes the new file brings.
@@ -494,7 +526,7 @@ export const ClipPreview = memo(function ClipPreview({
   // The copy's entity tag, before the element is asked for anything: one byte, once per
   // attempt. It also names a copy that has gone, or is empty, without a `MediaError`.
   useEffect(() => {
-    if (!playsCopy) {
+    if (!playsCopy || !open) {
       setProbed(null)
       return
     }
@@ -513,7 +545,7 @@ export const ClipPreview = memo(function ClipPreview({
       () => undefined,
     )
     return () => controller.abort()
-  }, [playsCopy, attempt, eventId, identity])
+  }, [playsCopy, open, attempt, eventId, identity])
 
   // Why the browser refused the clip: one byte, once.
   useEffect(() => {
@@ -626,6 +658,11 @@ export const ClipPreview = memo(function ClipPreview({
   }
 
   function togglePlay(): void {
+    // Closed: the press opens the preview, which plays once it has read the clip.
+    if (!open) {
+      onOpen?.()
+      return
+    }
     const video = videoRef.current
     if (video === null || phase === 'checking' || phase === 'failed') {
       return
@@ -908,6 +945,8 @@ export const ClipPreview = memo(function ClipPreview({
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault()
+          // The docked player's Escape is its own: the selection is left as it is.
+          event.stopPropagation()
           onClose()
         }
       }}
@@ -928,8 +967,9 @@ export const ClipPreview = memo(function ClipPreview({
           ref={closeRef}
           type="button"
           className="btn btn-ghost btn-icon preview-close"
-          aria-label={closeName(name)}
-          onClick={onClose}
+          aria-label={docked ? hidePlayerName(name) : closeName(name)}
+          title={docked ? 'Hide player' : undefined}
+          onClick={docked ? onHide : onClose}
         >
           {CLOSE}
         </button>
@@ -991,28 +1031,47 @@ export const ClipPreview = memo(function ClipPreview({
       ) : (
         <>
           <div className="preview-stage" data-turned={turn !== 0 || undefined}>
-            <video
-              key={attempt}
-              ref={videoRef}
-              className="preview-video"
-              data-turn={turnAttr(turn)}
-              preload="metadata"
-              playsInline
-              // Its controls are the house's own; Firefox would make the bare element a stop.
-              tabIndex={-1}
-              poster={thumbnailUrl(eventId, clip)}
-              onClick={togglePlay}
-              onLoadedMetadata={onLoadedMetadata}
-              onDurationChange={onDurationChange}
-              onPlay={() => setPlaying(true)}
-              onPause={() => {
-                setPlaying(false)
-                onSeeked()
-              }}
-              onSeeked={onSeeked}
-              onError={onError}
-            />
-            {!ready && (
+            {open ? (
+              <video
+                key={attempt}
+                ref={videoRef}
+                className="preview-video"
+                data-turn={turnAttr(turn)}
+                preload="metadata"
+                playsInline
+                // Its controls are the house's own; Firefox would make the bare element a stop.
+                tabIndex={-1}
+                poster={thumbnailUrl(eventId, clip)}
+                onClick={togglePlay}
+                onLoadedMetadata={onLoadedMetadata}
+                onDurationChange={onDurationChange}
+                onPlay={() => setPlaying(true)}
+                onPause={() => {
+                  setPlaying(false)
+                  onSeeked()
+                }}
+                onSeeked={onSeeked}
+                onError={onError}
+              />
+            ) : (
+              // Closed: the clip's thumbnail, the one request the player makes before Play.
+              thumbFailed ? (
+                <span className="preview-status" role="img" aria-label={`No preview for ${name}`}>
+                  No preview
+                </span>
+              ) : (
+                <img
+                  className="preview-video"
+                  data-turn={turnAttr(turn)}
+                  src={thumbnailUrl(eventId, clip)}
+                  alt=""
+                  draggable={false}
+                  onClick={togglePlay}
+                  onError={() => setThumbFailed(true)}
+                />
+              )
+            )}
+            {open && !ready && (
               <span className="preview-status" aria-hidden="true">
                 {LOADING}
               </span>
@@ -1036,15 +1095,18 @@ export const ClipPreview = memo(function ClipPreview({
               valueText={lengthMs === null ? '' : playheadWords(valueMs, lengthMs, cuts)}
               valueMs={valueMs}
               keysId={`${id}-keys`}
+              loadingText={open ? LOADING : NOT_LOADED}
               onKey={onKey}
               onPointer={pointer}
             />
           </div>
           <p className="preview-source">
-            {sourceLine(
-              playsCopy ? 'copy' : 'original',
-              source.kind === 'original' ? source.why : null,
-            )}
+            {open
+              ? sourceLine(
+                  playsCopy ? 'copy' : 'original',
+                  source.kind === 'original' ? source.why : null,
+                )
+              : NOT_LOADED}
           </p>
           <p className="visually-hidden" id={`${id}-keys`}>
             {PLAYHEAD_KEYS}
@@ -1060,7 +1122,7 @@ export const ClipPreview = memo(function ClipPreview({
             </ul>
           )}
           {/* A read-only player of a clip with nothing to skip or swap has no row of actions. */}
-          {(skipOffered || !readOnly || source.kind === 'copy') && (
+          {(skipOffered || !readOnly || (open && source.kind === 'copy')) && (
             <div className="preview-actions">
               {skipOffered && (
                 <button
@@ -1096,7 +1158,7 @@ export const ClipPreview = memo(function ClipPreview({
                     {SET_WORDS[field]}
                   </button>
                 ))}
-              {source.kind === 'copy' && (
+              {open && source.kind === 'copy' && (
                 <button
                   type="button"
                   className="btn btn-secondary btn-compact preview-original"

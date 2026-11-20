@@ -26,6 +26,7 @@ const TOP_MIN_WINDOW_REM = 28
 
 export function Workspace({
   top,
+  player,
   bin,
   event,
   timeline,
@@ -34,6 +35,8 @@ export function Workspace({
   onTab,
 }: {
   top: ReactNode
+  /** The bin's player (`BinPlayer`): above the bin's scroll box, so it never scrolls away. */
+  player: ReactNode
   bin: ReactNode
   /** The inspector's Event tab. */
   event: ReactNode
@@ -162,8 +165,11 @@ export function Workspace({
         <div ref={topRef} className="ws-top">
           {top}
         </div>
-        <section className="ws-pane ws-bin" aria-label="Clips" data-ws-scroll>
-          {bin}
+        <section className="ws-binbox" aria-label="Clips">
+          {player}
+          <div className="ws-pane ws-bin" data-ws-scroll>
+            {bin}
+          </div>
         </section>
         <section className="ws-pane ws-view" aria-label="Viewer">
           <div className="ws-view-empty">{viewer}</div>
