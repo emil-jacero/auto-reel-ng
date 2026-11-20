@@ -56,6 +56,13 @@
     gap: var(--s-1);
   }
 
+  /* A coarse pointer needs the rows apart again (`preview.css`): the rule above is the more specific. */
+  @media (pointer: coarse) {
+    .bin-player .clip-preview {
+      row-gap: var(--s-4);
+    }
+  }
+
   /* Closed, the thumbnail is a Play target of its own. */
   .bin-player[data-state='closed'] .preview-stage {
     cursor: pointer;
