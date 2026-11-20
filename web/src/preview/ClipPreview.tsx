@@ -963,7 +963,9 @@ export const ClipPreview = memo(function ClipPreview({
         if (event.key === 'Escape') {
           event.preventDefault()
           // The docked player's Escape is its own: the selection is left as it is.
-          event.stopPropagation()
+          if (docked) {
+            event.stopPropagation()
+          }
           onClose()
         }
       }}
