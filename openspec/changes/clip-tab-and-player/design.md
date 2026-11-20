@@ -54,6 +54,9 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
 - **Close becomes Hide player.** `ClipPreview`'s Close is replaced by Hide player. Escape in the player calls
   `previews.close(id)`, keeps focus on Play, and stops propagation, so `useSelection` does not clear the selection.
 - **A new shown clip** calls `previews.close(was)` first. That is the existing one-at-a-time rule.
+- **Empty.** With no shown clip the player keeps the closed preview's height: the same 16:9 box holding "Select a clip
+  to watch it.", and the same rows (time, Play and playhead, source line, Skip cuts, Set From, Set To), every control
+  `aria-disabled`, so the first selection changes no bin row's size or place. The hidden state is unchanged.
 - **Hidden.** It renders a one-line bar with the clip's name and Show player, and closes any open preview.
 - **Workspace keys.** The whole player region counts as "inside a clip preview" for `editor-shortcuts`' rules
   (`focusFacts.inPreview`), open or closed. So Space on its Play presses Play even after a pointer press on a row's

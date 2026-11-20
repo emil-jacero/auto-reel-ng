@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
+import type { CSSProperties } from 'react'
 
 import { clipMediaUrl } from '../api/clipMedia'
 import type { Clip } from '../api/event'
@@ -18,12 +19,17 @@ import type { CutField } from '../cuts/times'
 import { ClipPreview, useClipLength, usePreviewOpen } from '../preview/ClipPreview'
 import {
   HIDE_PLAYER_BARE,
+  NOT_LOADED,
   NO_CLIP_TO_WATCH,
+  SET_WORDS,
   SHOW_PLAYER,
   SHOW_PLAYER_NAME,
+  SKIP_CUTS,
   setWords,
+  timeCells,
 } from '../preview/playback'
 import type { Turn } from '../rotate/turn.ts'
+import { ClockGroup } from '../ui/Clock'
 import { Icon } from '../ui/Icon'
 import { cuttable, shownClip } from './binPlayer.ts'
 import { setBinPlayerShown, useBinPlayerShown } from './binPlayerPref.ts'
@@ -52,6 +58,88 @@ const FOCUS_SELECTOR: Record<FocusTarget, string> = {
   play: '.preview-play',
   show: '.bin-player-show',
   hide: '.preview-close, .bin-player-hide',
+}
+
+/**
+ * The player with no shown clip: the closed preview's own box and rows (head, 16:9 stage, Play
+ * and playhead, the source line, Skip cuts and the Set buttons) with a placeholder for the
+ * picture and every control `aria-disabled`, so the first selection moves no row of the bin
+ * (design D2). It shares `ClipPreview`'s classes, so the two cannot drift apart in size.
+ */
+function EmptyPreview({ onHide }: { onHide: () => void }) {
+  const { time, length } = timeCells(0, null)
+  const none = (): void => undefined
+  return (
+    <section className="clip-preview" aria-label="Player">
+      <div className="preview-head">
+        <span className="preview-time" aria-hidden="true">
+          <ClockGroup label="Clip" time={time} length={length} />
+        </span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-icon preview-close bin-player-hide"
+          aria-label={HIDE_PLAYER_BARE}
+          title="Hide player"
+          onClick={onHide}
+        >
+          <Icon name="x" />
+        </button>
+      </div>
+      <div className="preview-stage">
+        <span className="preview-status">{NO_CLIP_TO_WATCH}</span>
+      </div>
+      <div className="preview-transport">
+        <button
+          type="button"
+          className="btn btn-secondary btn-icon preview-play"
+          aria-label="Play"
+          aria-disabled="true"
+          onClick={none}
+        >
+          <Icon name="play" />
+        </button>
+        <div
+          className="cut-bar"
+          role="slider"
+          tabIndex={0}
+          aria-label="Playhead"
+          aria-disabled="true"
+          aria-valuemin={0}
+          aria-valuemax={0}
+          aria-valuenow={0}
+          aria-valuetext={NOT_LOADED}
+        >
+          <span className="cut-bar-track" />
+          <span className="cut-bar-head" style={{ '--at': '0%' } as CSSProperties} />
+        </div>
+      </div>
+      <p className="preview-source">{NOT_LOADED}</p>
+      <div className="preview-actions">
+        <button
+          type="button"
+          className="btn btn-ghost btn-compact preview-skip"
+          aria-pressed={false}
+          aria-disabled="true"
+          onClick={none}
+        >
+          <Icon name="skip-forward" />
+          {SKIP_CUTS}
+        </button>
+        {(['start', 'end'] as const).map((field) => (
+          <button
+            key={field}
+            type="button"
+            className="btn btn-secondary btn-compact preview-set"
+            data-field={field}
+            aria-disabled="true"
+            onClick={none}
+          >
+            {SET_WORDS[field]}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 export function BinPlayer({
@@ -250,19 +338,8 @@ export function BinPlayer({
             {SHOW_PLAYER}
           </button>
         )}
-        {wanted && shown === null && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-icon bin-player-hide"
-            aria-label={HIDE_PLAYER_BARE}
-            title="Hide player"
-            onClick={onHide}
-          >
-            <Icon name="x" />
-          </button>
-        )}
       </div>
-      {wanted && shown === null && <p className="bin-player-none">{NO_CLIP_TO_WATCH}</p>}
+      {wanted && shown === null && <EmptyPreview onHide={onHide} />}
       {wanted && shown !== null && ref !== null && name !== null && (
         <ClipPreview
           key={`${shown}:${open}`}
