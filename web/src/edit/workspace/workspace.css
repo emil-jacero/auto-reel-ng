@@ -762,9 +762,10 @@
     }
 
     @media (width >= 960px) {
-      /* The marks line as the bin's sticky toolbar (D2): two fixed rows, 88 px with a fine pointer.
-         Chapter headings stick under it, and focus scrolled into view clears both. */
-      --bin-toolbar-h: 5.5rem;
+      /* The marks line as the bin's sticky toolbar (D2): one row of actions, the Clips help first,
+         48 px with a fine pointer. While a clip is marked the count and Clear marks take a row
+         above it (88 px). Chapter headings stick under it, and focus scrolled into view clears both. */
+      --bin-toolbar-h: 3rem;
       --bin-stick-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
       --header-h: var(--bin-stick-h);
       scroll-padding-block: calc(
@@ -788,7 +789,30 @@
         align-content: start;
       }
 
+      /* No clip marked: the count's row would be empty, so it is not drawn. Marked, the toolbar
+         takes its old two rows' height: the lists below move down by the row (a grid track
+         stays at its minimum, so the height is the minimum). */
+      & > .mark-line[data-marked='false'] .mark-head {
+        display: none;
+      }
+
+      & > .mark-line[data-marked='true'] {
+        min-block-size: 5.5rem;
+      }
+
+      /* The Help toggle shares the actions' row, so Move shows its arrow alone (its name is the
+         same): the picker keeps room for a chapter name. */
+      & .mark-move-word {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
       & .mark-line .help-toggle {
+        flex: none;
         block-size: var(--mark-control-h);
         min-block-size: var(--mark-control-h);
         min-inline-size: var(--mark-control-h);
@@ -851,6 +875,11 @@
 
         & .btn {
           flex: none;
+          position: relative;
+          min-inline-size: var(--mark-control-h);
+          inline-size: var(--mark-control-h);
+          padding-inline: 0;
+          justify-content: center;
         }
       }
 
@@ -864,6 +893,11 @@
         & > .mark-line {
           --mark-control-h: 2.75rem;
           position: static;
+        }
+
+        /* Two rows of 44 px controls, three while a clip is marked. */
+        & > .mark-line[data-marked='true'] {
+          min-block-size: 10.25rem;
         }
 
         /* Two 44 px Rotate buttons, the picker and Move do not fit one row of a 240 px bin
