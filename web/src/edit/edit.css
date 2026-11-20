@@ -1161,16 +1161,48 @@
         line-height: 1.2;
       }
 
+      /* The name takes what the length, the status and Include leave (it ends in an ellipsis);
+         the handle is the row's last cell, not a column of its own beside the number's. */
       .edit-chapter[data-compact] .clip-ignored .clip-item {
         --clip-row-h: 1.8125rem;
         min-block-size: 0;
-        grid-template-columns: var(--clip-thumb-w) minmax(0, 1fr) auto;
-        grid-template-areas: 'thumb file facts';
+        grid-template-columns: var(--clip-thumb-w) minmax(0, 1fr) auto 1.75rem;
+        grid-template-areas: 'thumb file facts handle';
         align-items: center;
       }
 
-      .edit-chapter[data-compact] .clip-ignored .clip-item > .drag-slot {
+      .edit-chapter[data-compact] .clip-ignored .clip-item > :is(.drag-slot, .clip-pos) {
         display: none;
+      }
+
+      /* The name is one block that clips: an inline button would run past it. */
+      .edit-chapter[data-compact] .clip-name > .clip-select {
+        display: block;
+        max-inline-size: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    /* Below 21rem the length would leave the name an ellipsis of a few letters: it is the row's
+       first fact to go, then (below 17rem) the status icon, whose words stay for the caption and
+       assistive technology. */
+    @container (13.5rem <= width < 21rem) {
+      .edit-chapter[data-compact] .clip-ignored .clip-length {
+        display: none;
+      }
+    }
+
+    @container (13.5rem <= width < 17rem) {
+      .edit-chapter[data-compact] .clip-ignored .clip-status {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
       }
     }
 
