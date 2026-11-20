@@ -5,7 +5,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate: `chapters-in-inspector` MUST be archived, and both of these must succeed from the repo root:
+- [x] 0.1 Dependency gate: `chapters-in-inspector` MUST be archived, and both of these must succeed from the repo root:
   - `ls -d openspec/changes/archive/*-chapters-in-inspector`
   - `grep -q "Requirement: The Event tab lists the event's chapters" openspec/specs/web-app/spec.md`
 
