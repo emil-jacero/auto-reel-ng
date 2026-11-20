@@ -17,14 +17,14 @@ import type { Clip, EventDetail } from '../api/event'
 import type { EventFailure, Problem } from '../api/events'
 import { fetchReel, saveReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from '../api/reel'
-import type { CutHandlers, CutPanels, PanelState } from '../cuts/CutsPanel'
+import type { CutHandlers } from '../cuts/CutsPanel'
+import { createCutPanels } from '../cuts/panelStore'
 import { keptCuts, trimmedWords } from '../cuts/times'
 import { markEventsChanged } from '../events/changes'
 import { fileName, folderName, namesIn, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
 import { FAILURE_LOOK } from '../events/tones'
 import { eventName } from '../jobs/labels'
-import { createClipPreviews } from '../preview/previews'
 import { groupTurnAnnouncement, rotatedCount, turnAnnouncement, turnsOf } from '../rotate/turn.ts'
 import type { Turn, Way } from '../rotate/turn.ts'
 import type { RotateHandler } from '../rotate/RotateButtons'
@@ -1756,24 +1756,7 @@ export function EventEditor({
   // Each clip's cut panel, shown or not and its fields as typed, by identity: here, not
   // in its row, which Move marked to… mounts anew in another chapter. Reset empties it, and
   // closes every clip preview (one open at a time, `preview/previews.ts`).
-  const [cutPanels] = useState(() => {
-    const held = new Map<string, PanelState>()
-    const previews = createClipPreviews()
-    const panels: CutPanels = {
-      get: (identity) => held.get(identity),
-      set: (identity, next) => {
-        held.set(identity, next)
-      },
-      previews,
-    }
-    return {
-      panels,
-      clear: () => {
-        held.clear()
-        previews.hideAll()
-      },
-    }
-  })
+  const [cutPanels] = useState(createCutPanels)
 
   // Each chapter's removed clips, in its original order; one shared empty list for the rest.
   const removals = ready?.draft.removed
@@ -3531,7 +3514,8 @@ export function EventEditor({
               cutsOf={(identity) => cutsOf(ready.baseline.cuts, ready.draft.cuts, identity)}
               turnOf={(identity) => draftTurns.get(identity) ?? 0}
               locked={listsLocked}
-              previews={cutPanels.panels.previews}
+              panels={cutPanels.panels}
+              onTyped={cutHandlers.onTyped}
               focusAsk={watchAsk}
               onAnnounce={announce}
             />

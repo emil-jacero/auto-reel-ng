@@ -1,16 +1,28 @@
 import './binPlayer.css'
 
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
+import { clipMediaUrl } from '../api/clipMedia'
 import type { Clip } from '../api/event'
-import { ClipPreview, usePreviewOpen } from '../preview/ClipPreview'
+import type { CutPanels } from '../cuts/CutsPanel'
+import { checkCut, clipLength, formatTime } from '../cuts/times'
+import type { CutField } from '../cuts/times'
+import { ClipPreview, useClipLength, usePreviewOpen } from '../preview/ClipPreview'
 import {
   HIDE_PLAYER_BARE,
   NO_CLIP_TO_WATCH,
   SHOW_PLAYER,
   SHOW_PLAYER_NAME,
+  setWords,
 } from '../preview/playback'
-import type { ClipPreviews } from '../preview/previews'
 import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
 import { shownClip } from './binPlayer.ts'
@@ -32,6 +44,7 @@ import type { Selection } from './workspace/selection.ts'
  */
 
 const NO_CUTS: readonly DraftCut[] = []
+const NEVER = (): (() => void) => () => undefined
 
 /** `.preview-play` in a docked preview, and the controls Hide and Show leave focus on. */
 type FocusTarget = 'play' | 'show' | 'hide'
@@ -49,7 +62,8 @@ export function BinPlayer({
   cutsOf,
   turnOf,
   locked,
-  previews,
+  panels,
+  onTyped,
   focusAsk,
   onAnnounce,
 }: {
@@ -66,7 +80,10 @@ export function BinPlayer({
   turnOf: (identity: string) => Turn
   /** A save or a move of marked clips is pending: Set From and Set To change nothing. */
   locked: boolean
-  previews: ClipPreviews
+  /** The editor's panel store: Set From and Set To write the shown clip's fields in it. */
+  panels: CutPanels
+  /** The shown clip's panel went from no typed text to some, or back (the Cuts control says "typed"). */
+  onTyped: (identity: string, typed: boolean) => void
   /** Counts the row Watch presses: each moves keyboard focus to Play once the player shows its clip. */
   focusAsk: number
   onAnnounce: (message: string) => void
@@ -99,6 +116,7 @@ export function BinPlayer({
     [identity, mtime],
   )
 
+  const { previews } = panels
   const open = usePreviewOpen(previews, shown ?? '')
   const rootRef = useRef<HTMLDivElement>(null)
   const focusNext = useRef<FocusTarget | null>(null)
@@ -164,11 +182,44 @@ export function BinPlayer({
     focusNext.current = 'hide'
     setBinPlayerShown(true)
   }, [])
-  // Set From and Set To write the shown clip's panel fields in the next task (design D4).
-  const onSet = useCallback(() => undefined, [])
+  // Set From and Set To write the shown clip's panel fields, shown panel or hidden (design D4):
+  // the panel is not opened, the bin does not scroll and focus stays on the pressed control. The
+  // clip then counts as typed, as for any typed time, and the value is announced.
+  const onSet = useCallback(
+    (field: CutField, seconds: number) => {
+      if (shown === null || locked) {
+        return
+      }
+      const held = panels.get(shown)
+      const had = (held?.start.trim() ?? '') !== '' || (held?.end.trim() ?? '') !== ''
+      panels.setTyped(shown, field, formatTime(seconds))
+      if (!had) {
+        onTyped(shown, true)
+      }
+      onAnnounce(setWords(field, seconds))
+    },
+    [shown, locked, panels, onTyped, onAnnounce],
+  )
 
   const name = shown === null ? null : nameOf(shown)
   const cuts = shown === null ? NO_CUTS : cutsOf(shown)
+  // The panel's fields as typed: the bar draws the span they make, when a cut would accept it.
+  const fields = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => (shown === null ? NEVER() : panels.subscribe(shown, listener)),
+      [panels, shown],
+    ),
+    () => (shown === null ? undefined : panels.get(shown)),
+  )
+  const previewed = useClipLength(previews, clipMediaUrl(eventId, { identity: shown ?? '', mtime }))
+  const length = clipLength(previewed, clip?.duration ?? null)
+  const typed = useMemo(() => {
+    if (fields === undefined) {
+      return null
+    }
+    const checked = checkCut(cuts, fields.start, fields.end, length)
+    return checked.ok ? { in: checked.in, out: checked.out } : null
+  }, [cuts, fields, length])
 
   return (
     <div
@@ -221,6 +272,7 @@ export function BinPlayer({
           proxy={clip?.proxy ?? null}
           name={name}
           cuts={cuts}
+          typed={typed}
           locked={locked}
           turn={turnOf(shown)}
           previews={previews}

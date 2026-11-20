@@ -32,7 +32,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   test` and `npm run check`, then in Playwright with the scenarios of "Edit mode previews a clip on request", "A
   clip's preview plays its preview copy when one is ready", "Edit mode holds one video at a time" and "Space on the
   player's Play after a click on a row's frame".
-- [ ] 2.2 Set From and Set To write the shown clip's panel fields (design D4), and the row's Watch selects the clip and
+- [x] 2.2 Set From and Set To write the shown clip's panel fields (design D4), and the row's Watch selects the clip and
   focuses Play (design D7). Verify in Playwright:
   - every scenario of "A clip's preview sets cut times at the playhead and plays the clip as the movie will";
   - Set From with the row's panel hidden makes its Cuts control say "typed" and holds Save.
