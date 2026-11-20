@@ -6,6 +6,8 @@
   .bin-player {
     flex: none;
     display: grid;
+    /* The column may be narrower than the heading's nowrap text: the name takes an ellipsis. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--s-2);
     padding: var(--s-2) var(--s-3);
     border-block-end: 1px solid var(--border);
