@@ -13,6 +13,13 @@ import { describe, it } from 'node:test'
 const css = readFileSync(new URL('binPlayer.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 
 describe('binPlayer.css', () => {
+  it('the player’s column may be narrower than its heading, so Show player is never cut off', () => {
+    const root = /\.bin-player\s*\{([^}]*)\}/.exec(css)
+    assert.notEqual(root, null, 'a `.bin-player` rule')
+    assert.match(root?.[1] ?? '', /grid-template-columns:\s*minmax\(0,\s*1fr\)/)
+  })
+
+
   it('a coarse pointer keeps the preview rows a tap area apart', () => {
     const coarse = /@media \(pointer: coarse\)\s*\{\s*\.bin-player \.clip-preview\s*\{([^}]*)\}/.exec(css)
     assert.notEqual(coarse, null, 'a coarse-pointer rule for `.bin-player .clip-preview`')
