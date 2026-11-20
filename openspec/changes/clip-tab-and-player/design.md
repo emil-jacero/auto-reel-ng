@@ -98,16 +98,19 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
 ### D6. Move earlier and Move later (`edit/stepMove.ts`, pure)
 ```ts
 export function stepMove(chapters: readonly { key: ChapterKey; identities: readonly string[] }[],
-                         identity: string, way: -1 | 1, missing: boolean):
+                         identity: string, way: -1 | 1, onDisk: (identity: string) => boolean):
   | { kind: 'move'; chapter: ChapterKey; from: number; to: number }
-  | { kind: 'clip-drop'; from: ChapterKey; to: ChapterKey; at: number }
+  | { kind: 'clip-drop'; from: ChapterKey; to: ChapterKey; at: number; before: string | null }
   | { kind: 'edge'; words: string }
 ```
 - **Order.** Steps go over the chapter's listed clips, missing ones included and ignored ones not: the bin's play
   order. That is Move up and Move down.
-- **Edges.** At a chapter's edge the clip goes to the end of the previous listed chapter, or the start of the next,
-  as Alt and an arrow do. A missing clip, or the first or last clip of the event, returns `edge` with the reason in
-  words, and the button is `aria-disabled`.
+- **Edges.** At a chapter's edge the clip goes where Alt and an arrow put it (`stepSlot`, `applyDrop`): after the
+  previous listed chapter's last clip on disk, or before the next one's first clip on disk (`before` names it for the
+  announcement, null at a chapter's end), so Move later is Alt+Right. A missing clip returns `edge` with the reason in
+  words; so does the first or last clip of the event, with Alt and an arrow's "<name> is already the first/last
+  clip."; the button is `aria-disabled`. One difference remains inside a chapter: Move earlier and Move later step
+  over missing clips (the bin's play order), where Alt and an arrow skip them.
 - **Announcements** reuse the Move up/down words in a chapter and the Alt-arrow words across one.
 - **Tests.** `stepMove.test.ts`.
 

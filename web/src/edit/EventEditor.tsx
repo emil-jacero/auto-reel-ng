@@ -3029,7 +3029,7 @@ export function EventEditor({
       if (!lists.some((list) => list.identities.includes(identity))) {
         return
       }
-      const step = stepMove(lists, identity, way, clips.get(identity)?.status === 'missing')
+      const step = stepMove(lists, identity, way, (id) => onDisk(clips.get(id)))
       if (step.kind === 'edge') {
         announce(step.words)
       } else if (step.kind === 'move') {
@@ -3038,10 +3038,7 @@ export function EventEditor({
         announce(clipStepWords(nameOfClip(identity), step.to, length))
       } else {
         dispatch({ type: 'clip-drop', from: step.from, to: step.to, identity, at: step.at })
-        const there = lists.find((list) => list.key === step.to)?.identities ?? NONE_REMOVED
-        announce(
-          stepAcrossWords(identity, headingIn(current.draft, step.to), there[step.at] ?? null),
-        )
+        announce(stepAcrossWords(identity, headingIn(current.draft, step.to), step.before))
       }
     },
     [announce, clips, nameOfClip],
@@ -3638,7 +3635,7 @@ export function EventEditor({
           if (!offers.step || own === undefined) {
             return null
           }
-          const step = stepMove(steps, identity, way, clip.status === 'missing')
+          const step = stepMove(steps, identity, way, (id) => onDisk(clips.get(id)))
           return step.kind === 'edge' ? step.words : null
         }
         const ignoredIn = [...ignoredOf].find(([, identities]) => identities.includes(identity))?.[0]
