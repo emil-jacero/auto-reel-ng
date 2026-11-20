@@ -1222,12 +1222,17 @@ function scrollInPane(row: HTMLElement | null): void {
     }
     const { overflowY } = getComputedStyle(pane)
     if ((overflowY === 'auto' || overflowY === 'scroll') && pane.scrollHeight > pane.clientHeight) {
+      // Measured inside the pane's scroll padding: the sticky toolbar and chapter heading hide
+      // the pane's top rows.
       const box = pane.getBoundingClientRect()
+      const style = getComputedStyle(pane)
+      const top = box.top + (parseFloat(style.scrollPaddingTop) || 0)
+      const bottom = box.bottom - (parseFloat(style.scrollPaddingBottom) || 0)
       const at = row!.getBoundingClientRect()
-      if (at.top < box.top) {
-        pane.scrollTop += at.top - box.top
-      } else if (at.bottom > box.bottom) {
-        pane.scrollTop += at.bottom - box.bottom
+      if (at.top < top) {
+        pane.scrollTop += at.top - top
+      } else if (at.bottom > bottom) {
+        pane.scrollTop += at.bottom - bottom
       }
       return
     }
