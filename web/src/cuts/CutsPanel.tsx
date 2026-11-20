@@ -32,7 +32,7 @@ import {
   spanWords,
   toggleName,
 } from './times'
-import type { CutRefusal, ListedCut } from './times'
+import type { CutField, CutRefusal, ListedCut } from './times'
 
 /*
  * A clip's cuts in Edit mode: the Cuts control in its row, and the panel it
@@ -51,10 +51,20 @@ import type { CutRefusal, ListedCut } from './times'
 /** What one clip's panel holds: whether it is shown, and its two fields as typed. */
 export type PanelState = { open: boolean; start: string; end: string }
 
-/** The editor's panel store, stable for its life; reads and writes never re-render anything. */
+/**
+ * The editor's panel store, stable for its life. Reads and writes re-render nothing by themselves:
+ * what shows a clip's fields (its panel, the bin's player) subscribes to that clip's entry.
+ */
 export type CutPanels = {
   get(identity: string): PanelState | undefined
   set(identity: string, next: PanelState): void
+  /**
+   * Write one field's text, as the player's Set From and Set To do: a panel that was never shown
+   * gets an entry, hidden, and a shown or hidden one keeps its state.
+   */
+  setTyped(identity: string, field: CutField, text: string): void
+  /** Called after each write to the clip's entry, and after a clear; returns its unsubscribe. */
+  subscribe(identity: string, listener: () => void): () => void
   /** The editor's clip previews: one open at a time, and each clip's length once read. */
   previews: ClipPreviews
 }
@@ -232,6 +242,8 @@ export const CutsPanel = memo(function CutsPanel({
   const [refusal, setRefusal] = useState<CutRefusal | null>(null)
   // A refused Undo's words, shown in its cut's row until the clip's next cut edit.
   const [undoRefusal, setUndoRefusal] = useState<{ key: CutKey; words: string } | null>(null)
+  // What the fields hold now, for the store's listener below (a closure over state would be stale).
+  const fields = useRef({ start, end })
   const startRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -260,12 +272,32 @@ export const CutsPanel = memo(function CutsPanel({
     })
     const had = hasText(start, end)
     const has = hasText(nextStart, nextEnd)
+    fields.current = { start: nextStart, end: nextEnd }
     setStart(nextStart)
     setEnd(nextEnd)
     if (had !== has) {
       onTyped(identity, has)
     }
   }
+
+  // The fields follow the store when something else writes them (the player's Set From and Set
+  // To), and a refusal of the old text goes: it no longer describes the fields. The writer reports
+  // whether the clip now holds typed text (`onTyped`), so this changes nothing in the editor.
+  useLayoutEffect(
+    () =>
+      panels.subscribe(identity, () => {
+        const held = panels.get(identity)
+        const nextStart = held?.start ?? ''
+        const nextEnd = held?.end ?? ''
+        if (nextStart !== fields.current.start || nextEnd !== fields.current.end) {
+          fields.current = { start: nextStart, end: nextEnd }
+          setStart(nextStart)
+          setEnd(nextEnd)
+          setRefusal(null)
+        }
+      }),
+    [panels, identity],
+  )
 
   function add(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
