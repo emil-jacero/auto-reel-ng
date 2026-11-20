@@ -2513,13 +2513,15 @@ A job that a screen knows from its events read (`latest_job`) carries the job's 
 
 ### Requirement: Edit mode adds, renames, reorders and deletes chapters
 
-In Edit mode the operator SHALL be able to change the event's chapters themselves. Every control below SHALL
-be reachable with the keyboard and SHALL name, to assistive technology, the chapter it acts on.
+In Edit mode the operator SHALL be able to change the event's chapters themselves, in the Event tab's Chapters list
+("The Event tab lists the event's chapters"). Every control below SHALL be reachable with the keyboard and SHALL name,
+to assistive technology, the chapter it acts on.
 
-- **Add chapter**, after the last chapter, SHALL ask for a name and add an empty chapter with that name at the
-  end.
+- **Add chapter**, after the last chapter of the Chapters list, SHALL ask for a name and add an empty chapter with
+  that name at the end.
 - **Rename** SHALL be done in the title card editor, in its Name field ("The title card editor holds every
-  name and every title-card setting"), by the one workflow for every chapter. A chapter's header bar SHALL show its name as plain text: not a
+  name and every title-card setting"), by the one workflow for every chapter. A chapter's row in the Chapters list,
+  and its heading in the bin, SHALL show its name as plain text: not a
   button, with no pencil and no hover or focus change, and pressing it SHALL do nothing. There SHALL be no Rename
   button, no inline name field and no dialog of its own for a name. The event's own chapter (the default chapter,
   whose clips are the event folder's) has no name to rename: it is headed `Main` or `Clips` ("The event's own chapter
@@ -2535,12 +2537,18 @@ be reachable with the keyboard and SHALL name, to assistive technology, the chap
   When a chapter cannot be deleted, pressing Delete SHALL change nothing and leave focus on Delete. The page
   SHALL show and announce why the chapter cannot be deleted.
 
-**The header bar.** Every chapter's header bar, the event's own chapter's too, SHALL hold, in this order, the chapter's name as plain
-text, the chapter's clip count and an **Edit Titlecard** button; the chapter's tools (Move up, Move down, Delete, offered by the rules above) stay in their own row under the bar, which is sticky and keeps one line. In the workspace's clip bin, Edit Titlecard SHALL show an icon only at every window width, keeping its name and offering its words as a tooltip. In the bin from 960 CSS pixels wide (the side pane; below that the panes stack and the bin keeps the tools row under the bar) the bar SHALL instead hold the tools itself, after the clip count, so that with a fine pointer a chapter takes one row above its clips: there Move up, Move down and Delete SHALL show an icon only, keep their names and reasons, and offer their names as tooltips, and the bar SHALL be at most 36 CSS pixels tall. With a coarse pointer the bar keeps the 44 CSS pixel targets and wraps onto a second line. The
-button SHALL show an icon and the words "Edit Titlecard", SHALL be named "Edit title card for <name>" (the event's own chapter: its
-heading) and SHALL select that card, showing its editor on the inspector's "This title card" tab ("The title card editor is docked in the inspector"). A
-chapter's section SHALL show nothing between its header bar and its clips but the tools row and the notes of this requirement and of "Edit mode says what
-a chapter's name means for clips added later": no card row, no "Main title card" line, no source line ("from the folder name"). A chapter added in the draft has no saved card, and its
+**The row.** Every chapter's row in the Chapters list, the event's own chapter's too, SHALL hold, in this order, the
+chapter's name as plain text, the chapter's clip count, an **Edit Titlecard** button and the chapter's tools (Move up,
+Move down, Delete, offered by the rules above). Edit Titlecard, Move up, Move down and Delete SHALL show an icon only,
+keep their names and reasons, and offer their names (Edit Titlecard: its words) as tooltips. With a fine pointer a
+row SHALL be one line at most 36 CSS pixels tall in the inspector; with a coarse pointer it keeps the 44 CSS pixel
+targets and wraps onto a second line. The Edit Titlecard button SHALL be named "Edit title card for <name>" (the
+event's own chapter: its heading) and SHALL select that card, showing its editor on the inspector's "This title card"
+tab ("The title card editor is docked in the inspector"). A chapter's row SHALL show nothing under its line but the
+notes of this requirement and of "Edit mode says what a chapter's name means for clips added later": no card row, no
+"Main title card" line, no source line ("from the folder name"). In the bin, a chapter's heading SHALL hold its name
+and counts ("The bin's chapter headings and lists say what they hold") and no button, and the bin SHALL offer no Add
+chapter. A chapter added in the draft has no saved card, and its
 button SHALL be offered all the same and keeps the preview from the draft. While the Timeline draws a card built from the event's cards for it ("A chapter added while editing gets the event's card on the Timeline"), the editor SHALL say that until Save its title card is drawn as the event's and that its own settings can be changed after Save; otherwise it SHALL say that its card is drawn after Save.
 
 Each chapter SHALL offer only the controls that apply to it. An event that lists one chapter, the event's own,
@@ -2548,23 +2556,24 @@ offers Add chapter and none of the others. The only chapter left, a deleted one 
 Move up or Move down, so that an event never saves without a chapter.
 
 **Focus after the selection leaves the card.** When Escape clears the card selection from inside the editor, keyboard focus SHALL
-return to the control that selected the card (the chapter's Edit Titlecard button, or the card block on the Timeline), so that the focused field never
+return to the control that selected the card (the chapter's Edit Titlecard button in the Chapters list, which the Event tab then
+shows, or the card block on the Timeline), so that the focused field never
 unmounts onto the page body. Selecting something else leaves keyboard focus where the operator put it.
 
 **The Name field.** In the editor the field SHALL be the first of "This title card" and SHALL be named "Name of chapter <name>"
 for a chapter and "Title of the event" for the event's own chapter, where <name> is the name the draft holds when the editor opens. The
-header bar and the editor's title name the chapter by its name alone.
+chapter's row, its heading in the bin and the editor's title name the chapter by its name alone.
 
-- An accepted name SHALL be written to the draft as it is typed, so that the editor's heading, its preview, the chapter's header
-  bar behind the editor and the picker of Move marked to… follow it. A name equal to the chapter's current name, once the spaces
+- An accepted name SHALL be written to the draft as it is typed, so that the editor's heading, its preview, the chapter's
+  heading in the bin, its row in the Chapters list and every chapter picker follow it. A name equal to the chapter's current name, once the spaces
   around it are removed, SHALL change nothing. A rename SHALL be announced once, when keyboard focus leaves the field or the selection leaves the card, and not for each key; typing a name and typing the old one back announces nothing.
 - A refused name SHALL be explained under the field in words, in a `role="alert"` that is remounted for each refusal, and the
   field SHALL be marked invalid. The draft keeps the last accepted name, and the field keeps the typed text. Enter, with a refused
   name in the field, SHALL keep the field invalid and announce the refusal. Escape, and the selection of anything else, SHALL return the
   field's text to the draft's name and announce that the name was not changed and why; they SHALL NOT keep a refused name.
 - While the field holds a refused name, Ctrl+S SHALL save nothing and SHALL say "Not saved: the name is refused."
-- While a save or a move of marked clips is pending, the field and the editor's other fields SHALL say that they are unavailable
-  and SHALL change nothing (the busy-control rule); the bar's Edit Titlecard button SHALL say so too and select nothing.
+- While a save or a move of several clips is pending, the field and the editor's other fields SHALL say that they are unavailable
+  and SHALL change nothing (the busy-control rule); the row's Edit Titlecard button SHALL say so too and select nothing.
 - Reset, a conflict and Overwrite SHALL treat a name as any other edit; Reset SHALL restore the chapters' names as read.
 
 **The event's own chapter's name is the event's title.** For the event's own chapter the Name field SHALL edit the draft's
@@ -2581,7 +2590,7 @@ undone by Reset as one edit.
   file: the event page names them after the save, from the verdict.
 - The card's heading follows the name. A card that has its own title ("Card title (overrides the name)") keeps it.
 
-When the browser's primary pointer is coarse, each of these controls, the header bar's Edit Titlecard button, Add chapter and Undo SHALL take a tap
+When the browser's primary pointer is coarse, each of these controls, the row's Edit Titlecard button, Add chapter and Undo SHALL take a tap
 anywhere in an area of at least 44 × 44 CSS pixels around it that reaches no other control, as every button
 does ("Every control is large enough to touch").
 
@@ -2599,14 +2608,14 @@ with Enter or in the Add chapter dialog, and nothing SHALL change. The
 name saved is the accepted name without the spaces around it. A chapter's name SHALL be described to the
 operator as the words on its title card in the movie.
 
-A chapter the page showed when Edit mode opened SHALL, once deleted, stay listed in its place until the edits
-are saved, marked as deleted when the edits are saved. It lists none of its clips. Such a chapter offers an **Undo** control that returns it to its place, and keyboard focus SHALL move to that Undo. A
+A chapter the page showed when Edit mode opened SHALL, once deleted, stay listed in its place in the Chapters list
+until the edits are saved, marked as deleted when the edits are saved; the bin SHALL no longer list it. It lists none
+of its clips. Such a chapter offers an **Undo** control that returns it to its place, and keyboard focus SHALL move to that Undo. A
 chapter the operator added in this Edit mode and then deletes SHALL simply be gone. A chapter that plays no
-clip SHALL say so in Edit mode, and that a chapter without clips is left out of the movie. While the event
-lists another chapter, a deleted one aside, it SHALL also say that clips can be dragged into it, or moved into
-it with Move marked to… (see "Edit mode drags clips between chapters"). When it is the only
-chapter listed, a deleted one aside, it SHALL NOT say that: no other chapter has a clip to drag or to move,
-and the page offers no Move marked to… there.
+clip SHALL say so in its row, and that a chapter without clips is left out of the movie. While the event
+lists another chapter, a deleted one aside, the row SHALL also say that clips can be moved into it with Move to…
+(the Clip tab's, or a clip's menu). When it is the only
+chapter listed, a deleted one aside, it SHALL NOT say that: no other chapter has a clip to move.
 
 The event's own chapter SHALL be headed `Main` while any other chapter is listed, a deleted one aside, and
 `Clips` otherwise, as on the event page. Every change to the chapters SHALL count as an unsaved edit, like a
@@ -2621,23 +2630,25 @@ While a save is in flight, every chapter control and Add chapter SHALL say that 
 change nothing when pressed.
 
 #### Scenario: A chapter's header in the bin is one row
-- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer, with
+  nothing selected
 - **THEN**
-  - `Kvällen`'s header is one row holding, in this order, its name, its clip count, and icon buttons named "Edit title card for Kvällen", "Move chapter Kvällen up", "Move chapter Kvällen down" and "Delete chapter Kvällen", each offering its name as a tooltip
-  - no row of tools lies between that header and its first clip, and the header is at most 36 CSS pixels tall
+  - `Kvällen`'s heading in the bin is one row holding its name and counts and no button
+  - the Event tab's Chapters list has a row for `Kvällen` holding, in this order, its name, its clip count, and icon buttons named "Edit title card for Kvällen", "Move chapter Kvällen up", "Move chapter Kvällen down" and "Delete chapter Kvällen", each offering its name as a tooltip
+  - that row is one line at most 36 CSS pixels tall
 
 #### Scenario: A first chapter added to a one-chapter event
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, whose clips are all in its own chapter, the
   operator presses Add chapter, types `Kvällen vid grillen` and confirms
-- **THEN** a chapter `Kvällen vid grillen` is listed last, saying that it plays no clip and that clips can be
-  dragged into it or moved into it with Move marked to…; the first chapter's heading reads `Main` instead of
-  `Clips`; keyboard focus is on the new chapter's heading; the addition is announced; and the save bar says
+- **THEN** a chapter `Kvällen vid grillen` is listed last in the Chapters list, saying that it plays no clip and
+  that clips can be moved into it with Move to…; the first chapter's row and heading read `Main` instead of
+  `Clips`; keyboard focus is on the new chapter's row; the addition is announced; and the save bar says
   "1 chapter added"
 
 #### Scenario: A lone chapter offers only Add chapter
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, whose clips are all in its own chapter
-- **THEN** its one chapter offers no Move up, Move down or Delete, its header bar shows `Clips` as plain text with an Edit Titlecard
-  button (the editor's Name field edits the event's title), and the page offers Add chapter after it
+- **THEN** its one chapter offers no Move up, Move down or Delete, its row shows `Clips` as plain text with an Edit Titlecard
+  button (the editor's Name field edits the event's title), and the Chapters list offers Add chapter after it
 
 #### Scenario: A name already taken, or no name, is refused
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator adds a chapter named `kvällen`, then one named
@@ -2661,7 +2672,7 @@ change nothing when pressed.
 #### Scenario: Renaming a chapter
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator presses "Edit title card for Kvällen"
 - **THEN** the inspector shows the Title card tab on "This title card" with keyboard focus in the Name field, named "Name of chapter Kvällen" and holding
-  `Kvällen`; the header bar behind it shows `Kvällen` as plain text with no pencil
+  `Kvällen`; the chapter's heading in the bin shows `Kvällen` as plain text with no pencil
 - **WHEN** the operator selects the name, types ` Kväll på stranden `, with spaces around it, and presses Enter
 - **THEN** the field holds the name, the card stays selected, the heading reads `Kväll på stranden`, the rename was announced once, and the save bar says that 1
   chapter was renamed. The chapter offers no Rename button and its name is not pressable.
@@ -2669,12 +2680,12 @@ change nothing when pressed.
 #### Scenario: Renaming with the keyboard only
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator tabs to "Edit title card for Kvällen", presses Enter, types `Kväll`
   in the Name field and presses Escape
-- **THEN** the chapter is named `Kväll` (an accepted name is already in the draft), nothing is selected, keyboard focus is on the chapter's Edit Titlecard button, and the next Tab reaches the chapter's Move up
+- **THEN** the chapter is named `Kväll` (an accepted name is already in the draft), nothing is selected, the inspector shows the Event tab, keyboard focus is on the chapter's Edit Titlecard button in its Chapters list, and the next Tab reaches the chapter's Move up
 
 #### Scenario: Main and a chapter are edited alike
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens "Edit title card for Main" and then "Edit title card for Kvällen"
 - **THEN** each shows the same editor on "This title card" with the Name field first; Main's is named "Title of the event" and holds
-  `Två kapitel`, Kvällen's "Name of chapter Kvällen"; neither header bar has a pencil, a card row, a "Main title card" line or a
+  `Två kapitel`, Kvällen's "Name of chapter Kvällen"; neither row nor bin heading has a pencil, a card row, a "Main title card" line or a
   "from the folder name" line
 
 #### Scenario: Leaving the field keeps an accepted name
@@ -2710,7 +2721,7 @@ change nothing when pressed.
 
 #### Scenario: One field at a time
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, after adding a chapter `Morgon`, the operator renames `Kvällen` to `Kväll` in its editor, and presses "Edit title card for Morgon"
-- **THEN** only the card of `Morgon` is selected, `Kvällen`'s header bar reads `Kväll`, and the save bar counts the one rename
+- **THEN** only the card of `Morgon` is selected, `Kvällen`'s heading in the bin reads `Kväll`, and the save bar counts the one rename
 
 #### Scenario: A name typed and not kept holds Save
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator changes the title in the Details form, selects the card of `Kvällen`,
@@ -2720,12 +2731,12 @@ change nothing when pressed.
 
 #### Scenario: Reset closes the field
 - **WHEN** the operator renames `Kvällen` to `Kväll` in its editor, and presses Reset
-- **THEN** the header bar reads `Kvällen`, the page shows no unsaved changes, and "Edit title card for Kvällen" shows an editor whose Name field holds `Kvällen`
+- **THEN** the chapter's row and its heading in the bin read `Kvällen`, the page shows no unsaved changes, and "Edit title card for Kvällen" shows an editor whose Name field holds `Kvällen`
 
 #### Scenario: The event's own chapter keeps no name
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
 - **THEN** `Main` has no chapter rename and says that it has no name of its own because its title card shows the event's title; its
-  header bar shows `Main`, an Edit Titlecard button and no other title control
+  row shows `Main`, an Edit Titlecard button and no other title control
 
 #### Scenario: Renaming the main title card edits the event's title
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, in which one chapter is listed, and the operator opens "Edit title
@@ -2798,8 +2809,8 @@ change nothing when pressed.
 - **WHEN** the operator opens Edit mode on `2024-08-20 - Två kapitel - Tjörn` on a touch screen 320 pixels wide
 - **THEN** a tap anywhere in a 44 × 44 pixel area around each of `Kvällen`'s Edit Titlecard, Move up, Move down and Delete, and
   around `Main`'s Edit Titlecard and Add chapter, reaches that control and no other (centred on each, except
-  that the areas of Move up and Move down meet at the edge they share, as a clip row's move pair's do), and
-  the page does not scroll horizontally
+  that the areas of Move up and Move down meet at the edge they share), and the page does not scroll
+  horizontally
 
 #### Scenario: Chapter controls wait for a save
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, with a rename pending, the operator presses Save, and the
@@ -2810,23 +2821,22 @@ change nothing when pressed.
 #### Scenario: A lone empty chapter does not point at Move clips
 - **WHEN** Edit mode opens on `2024-10-05 - Tom mapp`, an event whose folder holds no clip, and the operator
   presses Add chapter, types `Kvällen vid grillen` and confirms
-- **THEN** the new chapter, the only one listed, counts 0 clips, and it says "No clips. A chapter without
-  clips is left out of the movie." It does not mention dragging clips or Move marked to…, and the page offers no Move marked to…
+- **THEN** the new chapter's row, the only chapter listed, counts 0 clips, and it says "No clips. A chapter without
+  clips is left out of the movie." It does not mention moving clips into it.
 
 #### Scenario: A lone chapter whose only clip is ignored
 - **WHEN** Edit mode opens on `2024-10-06 - Bara ignorerad`, an event that lists one chapter, whose only clip
   `s1710004.mp4` is ignored
-- **THEN** the chapter lists the ignored clip (under its heading below 960 px; from 960 px under "Ignored clips" directly after it, captioned with the chapter's name) and says "It plays no clip. A chapter without
-  clips is left out of the movie." It does not mention dragging clips or Move marked to…
+- **THEN** the bin lists the ignored clip, and the chapter's row counts 0 clips and says "It plays no clip. A chapter without
+  clips is left out of the movie." It does not mention moving clips into it.
 
 #### Scenario: A second chapter brings the hint back
 - **WHEN** on `2024-10-05 - Tom mapp`, with `Kvällen vid grillen` added, the operator presses Add chapter,
   types `Morgonen` and confirms
-- **THEN** both chapters say that they have no clips and that clips can be dragged into them or moved into
-  them with Move marked to…
+- **THEN** both chapters' rows say that they have no clips and that clips can be moved into them with Move to…
 - **WHEN** the operator then deletes `Morgonen`
 - **THEN** `Kvällen vid grillen` says again, as it did before the addition, that it has no clips and is left
-  out of the movie, without mentioning dragging or Move marked to…
+  out of the movie, without mentioning moving clips into it
 
 ### Requirement: Edit mode says what a chapter's name means for clips added later
 
@@ -3218,7 +3228,7 @@ within its chapter SHALL do this:
 - **from the keyboard**, on the clip's handle:
   - Down at a chapter's last position SHALL take the clip to the first position of the next listed chapter.
   - Up at a chapter's first position SHALL take it to after the last clip of the chapter before.
-  - A deleted chapter's placeholder SHALL be passed over.
+  - A deleted chapter, which the bin does not list, SHALL be passed over.
   - Page Down SHALL take the clip to the first position of the next listed chapter, and Page Up to the first
     position of the chapter before, wherever the clip is held. A chapter the clip does not play is entered at
     its first gap, before its first clip, and an empty one at its area. At the last chapter (Page Down) or the
@@ -3285,15 +3295,14 @@ and those SHALL NOT be taken into another chapter by a drag either:
   chapter is listed, its lift SHALL say that it stays in its chapter.
 - an ignored clip, and a missing clip the operator removed: neither has a handle
 
-A release over a deleted chapter's placeholder SHALL move nothing and SHALL be announced as a drop that
-changed nothing. While a save is in flight, or while a move of marked clips is being applied, no clip SHALL be
+The bin does not list a deleted chapter, so no drop SHALL move a clip into one. While a save is in flight, or while a move of marked clips is being applied, no clip SHALL be
 lifted, and a drop SHALL move nothing. Move marked to…, and Move up and Move down, SHALL work as they
 did before.
 
 In the Clips help ("Each explanation sits behind a Help toggle of its section"), Edit mode SHALL say how clips are moved:
 
 - with one chapter: that a clip is dragged by its handle or moved with its arrows, and that a chapter can be
-  added with Add chapter, below the chapters, after which clips can be dragged between chapters
+  added with Add chapter in the Event tab's Chapters list, after which clips can be dragged between chapters
 - with more than one chapter: that a clip can also be dragged into another chapter, and that Move marked to… moves the marked clips to a chapter
 
 On a coarse pointer a drag SHALL start only from the handle, as within a chapter. In a window 320 CSS pixels
@@ -3411,9 +3420,9 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
   from the keyboard and presses Down
 - **THEN** "Kvällen/s1710004.mp4 is over “Morgon”, position 1 of 1" is announced: the deleted `Kvällen` was
   passed over
-- **WHEN** the operator presses Escape, then drags `Kvällen/s1710004.mp4` with the mouse and releases it over
-  the deleted `Kvällen`
-- **THEN** no chapter changed, and the drop is announced as one that changed nothing
+- **WHEN** the operator presses Escape
+- **THEN** no chapter changed, and the bin lists no heading for the deleted `Kvällen`, so there is nothing to drop
+  a clip on
 
 #### Scenario: A missing clip stays in its chapter
 - **WHEN** on `2024-09-01 - Sommarlov`, after adding a chapter `Morgon`, the operator lifts `borttagen.mp4`
@@ -3464,8 +3473,8 @@ reduced motion, no clip SHALL slide into place, and the dragged copy SHALL NOT s
 
 #### Scenario: The hint says how to reach other chapters
 - **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar`, which has one chapter
-- **THEN** the Clips help, opened, says that a chapter can be added with Add chapter, below the chapters,
-  and that clips can then be dragged between chapters
+- **THEN** the Clips help, opened, says that a chapter can be added with Add chapter in the Event tab's
+  Chapters list, and that clips can then be dragged between chapters
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`
 - **THEN** the Clips help says that a clip can be dragged into another chapter, and that Move marked to… moves the marked clips to a chapter
 
@@ -6673,7 +6682,9 @@ Ctrl+S / Cmd+S SHALL save as today.
 
 The bin SHALL list every chapter with its clips in compact rows (thumbnail, name, kept length, status) and SHALL keep
 every action the chapter lists have: reorder and move between chapters by pointer and by keyboard, marks and Move
-marked to…, Add/rename/delete chapter, the New and Missing clips with their actions, and the clips the event ignores.
+marked to…, the New and Missing clips with their actions, and the clips the event ignores. Adding, moving, deleting and
+renaming chapters SHALL be done in the Event tab's Chapters list ("The Event tab lists the event's chapters"); a
+chapter's heading in the bin holds its name and counts and no tool.
 
 From 960 CSS pixels wide the bin SHALL be a side pane as wide as 22% of the window, at least 240 and at most 320 CSS pixels; below 960 the panes stack and it is as wide as the window. With a fine pointer, a row of a clip a chapter plays SHALL take two lines and be at most 70 CSS pixels tall: handle, position, name and the row's tools, then the thumbnail, the length it plays, its status and Cuts. In a bin narrower than about 17rem (272 CSS pixels) Rotate left and right go to the second line, before Cuts; from that width all of the row's tools are on the first line. In the bin, with a fine pointer, a clip's status is shown as its icon alone ("State is never shown by color alone"); with a coarse pointer it keeps its words. In a window from 960 CSS pixels wide, a chapter in the bin SHALL list only the clips it plays and the missing clips the operator removed. The bin SHALL list the clips the event ignores after the last chapter and before Add chapter, under the heading "Ignored clips": each chapter's ignored clips together, in the chapters' order and in the order the chapter lists them, under a caption that names the chapter and says how many it holds ("Main · 1 ignored clip, not played"), each named as that chapter names it, marked as ignored, with no position, handle or control. These clips still count as listed by their chapter. The bin SHALL show no such heading when the event ignores no clip. Below 960 CSS pixels each chapter lists its ignored clips after its other clips. The bin SHALL show no line of its own about new clips: the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says how many saving adds.
 
@@ -6707,7 +6718,8 @@ The viewer SHALL show the Timeline's picture with play, previous clip, next clip
 
 ### Requirement: The inspector holds the event's fields and the selected cut
 
-The inspector SHALL have an Event tab (Details form, Poster, and a button "All title cards in this event" that
+The inspector SHALL have an Event tab (Details form, the Chapters list of "The Event tab lists the event's chapters",
+Poster, and a button "All title cards in this event" that
 shows the Title card tab on its "All title cards in this event" tab, with whether title cards are on in words), a Clip tab (the selected
 clip's or cut's fields), a Title card tab (the docked card editor) and a Suggestion tab (the selected suggestion's decision), as "The inspector follows the selection" says. The tabs SHALL work by arrow keys. Choosing a cut or a
 suggestion on the track SHALL show its tab and leave focus on the track.
@@ -6819,7 +6831,8 @@ and say why. An event with one chapter SHALL offer no Move to….
 
 ### Requirement: The title card editor is docked in the inspector
 
-Selecting a title card, on the track or from its chapter in the bin, SHALL show its editor in the inspector's Title
+Selecting a title card, on the track or with its chapter's Edit Titlecard button in the Event tab's Chapters list,
+SHALL show its editor in the inspector's Title
 card tab: the tabs "This title card" and "All title cards in this event", the fields, and one live preview above them.
 No modal dialog SHALL open. Edits SHALL go into the one draft; the top bar counts a changed card.
 
@@ -7137,3 +7150,25 @@ the end of the chosen chapter, in play order; while it is applied it is the pend
 - **WHEN** `s1710002.mp4` is marked in the bin, `s1710001.mp4` and `s1710003.mp4` are selected, and the operator
   moves the selection to `Kvällen` with the Clip tab's Move
 - **THEN** only `s1710001.mp4` and `s1710003.mp4` moved, and `s1710002.mp4` is still marked where it was
+
+### Requirement: The Event tab lists the event's chapters
+
+The inspector's Event tab SHALL hold a **Chapters** list after the Details form: one row per chapter, in the draft's
+order, with the chapter's name and clip count and its tools, a deleted chapter's row until Save, and Add chapter
+after the last row. It SHALL work whether or not the Timeline's track is open, and SHALL be the only place in Edit
+mode that adds, moves or deletes a chapter ("Edit mode adds, renames, reorders and deletes chapters").
+
+#### Scenario: Chapters while proxies are being prepared
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` while its Timeline shows Prepare and no track
+- **THEN** the Event tab lists `Main` (1 clip) and `Kvällen` (3 clips) with their tools and Add chapter, and moving
+  `Kvällen` up works
+
+#### Scenario: An empty chapter is listed
+- **WHEN** the operator adds a chapter `Morgon` to `2024-08-20 - Två kapitel - Tjörn`
+- **THEN** the Event tab lists `Morgon` last, counting 0 clips, saying that it has no clips and is left out of the
+  movie, although the Timeline draws no band and no card for it
+
+#### Scenario: The bin holds no chapter tool
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window
+- **THEN** the bin's chapter headings hold each chapter's name and counts and no button, and the bin offers no Add
+  chapter
