@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { shownClip } from './binPlayer.ts'
+import { cuttable, shownClip } from './binPlayer.ts'
 import type { Selection } from './workspace/selection.ts'
 
 const listed = new Set(['a', 'b', 'c', 'gone'])
@@ -68,4 +68,12 @@ test('the shown clip is dropped once it leaves the disk', () => {
 
 test('a clip that was listed but is missing now is dropped even when still listed', () => {
   assert.equal(shownClip(none, 'gone', listed, onDisk), null)
+})
+
+test('only a clip in the movie, active or new, can be cut', () => {
+  assert.equal(cuttable({ excluded: false, status: 'active' }), true)
+  assert.equal(cuttable({ excluded: false, status: 'new' }), true)
+  assert.equal(cuttable({ excluded: false, status: 'ignored' }), false)
+  assert.equal(cuttable({ excluded: false, status: 'missing' }), false)
+  assert.equal(cuttable({ excluded: true, status: 'active' }), false)
 })

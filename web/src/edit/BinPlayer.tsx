@@ -25,7 +25,7 @@ import {
 } from '../preview/playback'
 import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
-import { shownClip } from './binPlayer.ts'
+import { cuttable, shownClip } from './binPlayer.ts'
 import { setBinPlayerShown, useBinPlayerShown } from './binPlayerPref.ts'
 import type { DraftCut } from './draft'
 import type { Selection } from './workspace/selection.ts'
@@ -187,7 +187,7 @@ export function BinPlayer({
   // clip then counts as typed, as for any typed time, and the value is announced.
   const onSet = useCallback(
     (field: CutField, seconds: number) => {
-      if (shown === null || locked) {
+      if (shown === null || locked || clip === undefined || !cuttable(clip)) {
         return
       }
       const held = panels.get(shown)
@@ -198,7 +198,7 @@ export function BinPlayer({
       }
       onAnnounce(setWords(field, seconds))
     },
-    [shown, locked, panels, onTyped, onAnnounce],
+    [shown, clip, locked, panels, onTyped, onAnnounce],
   )
 
   const name = shown === null ? null : nameOf(shown)
@@ -280,7 +280,7 @@ export function BinPlayer({
           autoPlay={open && playOnOpen.current}
           onOpen={onOpen}
           onHide={onHide}
-          onSet={onSet}
+          onSet={clip !== undefined && cuttable(clip) ? onSet : undefined}
           skipOn={skipping}
           onSkip={setSkipping}
           onClose={onClose}
