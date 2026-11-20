@@ -20,7 +20,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - each selection kind, including a cut, several clips and a card that keeps the clip shown;
   - a shown clip that leaves the event or the disk;
   - storage that throws, which falls back to shown.
-- [ ] 1.2 Add `stepMove.ts` (design D6). Verify with `stepMove.test.ts`. It must check:
+- [x] 1.2 Add `stepMove.ts` (design D6). Verify with `stepMove.test.ts`. It must check:
   - a step within a chapter, and past a missing clip;
   - the steps into the previous and the next chapter;
   - a missing clip at its chapter's edge, and the event's first and last clip, which return their reasons.
