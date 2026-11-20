@@ -328,6 +328,8 @@ export const ClipPreview = memo(function ClipPreview({
   onOpen,
   onHide,
   onSet,
+  skipOn,
+  onSkip,
   onClose,
   onAnnounce,
 }: {
@@ -365,6 +367,12 @@ export const ClipPreview = memo(function ClipPreview({
    * advice after a clip that is gone or changed is to press Refresh, not to stop editing.
    */
   onSet?: (field: CutField, seconds: number) => void
+  /**
+   * Skip cuts, held by the caller: the bin's player remounts this preview when it opens or closes,
+   * and the control keeps what it said. Given none, the preview holds it itself, off at the start.
+   */
+  skipOn?: boolean
+  onSkip?: (on: boolean) => void
   onClose: () => void
   onAnnounce: (message: string) => void
 }) {
@@ -402,7 +410,9 @@ export const ClipPreview = memo(function ClipPreview({
   const [playing, setPlaying] = useState(false)
   // The closed player's thumbnail could not be shown: its box says so, and Play still opens the clip.
   const [thumbFailed, setThumbFailed] = useState(false)
-  const [skip, setSkip] = useState(false)
+  const [ownSkip, setOwnSkip] = useState(false)
+  const skip = skipOn ?? ownSkip
+  const setSkip = onSkip ?? setOwnSkip
   // The shown frame's time (the head), and what the slider says (at most once a
   // second while playing, so a focused slider is not read out on every frame).
   const [atMs, setAtMs] = useState(0)

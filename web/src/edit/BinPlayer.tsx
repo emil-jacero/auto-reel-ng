@@ -26,8 +26,9 @@ import type { Selection } from './workspace/selection.ts'
  * as "inside a clip preview" for the workspace's keys (`.bin-player`, `shortcuts.ts`), open or not.
  *
  * `ClipPreview` does the playing; this decides which clip, and whether it is open. It is keyed by
- * the clip and by `open`, so opening and closing start it afresh, and a clip's move into another
- * chapter, which changes neither, leaves the preview as it was.
+ * the clip and by `open`, so opening and closing start it afresh (Skip cuts is kept here, per
+ * clip), and a clip's move into another chapter, which changes neither, leaves the preview as it
+ * was.
  */
 
 const NO_CUTS: readonly DraftCut[] = []
@@ -73,6 +74,9 @@ export function BinPlayer({
   const id = useId()
   const wanted = useBinPlayerShown()
   const [was, setWas] = useState<string | null>(null)
+  // Skip cuts is the shown clip's: off for each clip shown, and it outlives the preview's remount
+  // when the preview opens or closes.
+  const [skipping, setSkipping] = useState(false)
   const listed = useMemo(() => new Set(clips.keys()), [clips])
   // A clip on disk: an ignored one plays, a missing one has nothing to play.
   const onDisk = useCallback(
@@ -85,6 +89,7 @@ export function BinPlayer({
   const shown = shownClip(selection, was, listed, onDisk)
   if (shown !== was) {
     setWas(shown)
+    setSkipping(false)
   }
   const clip = shown === null ? undefined : clips.get(shown)
   const mtime = clip?.mtime ?? null
@@ -224,6 +229,8 @@ export function BinPlayer({
           onOpen={onOpen}
           onHide={onHide}
           onSet={onSet}
+          skipOn={skipping}
+          onSkip={setSkipping}
           onClose={onClose}
           onAnnounce={onAnnounce}
         />
