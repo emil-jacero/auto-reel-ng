@@ -47,11 +47,6 @@
     flex: none;
   }
 
-  .bin-player-none {
-    margin: 0;
-    color: var(--fg-muted);
-  }
-
   /* The preview's own head holds the time and Hide player; the heading above names the clip. */
   .bin-player .clip-preview {
     max-inline-size: 40rem;
