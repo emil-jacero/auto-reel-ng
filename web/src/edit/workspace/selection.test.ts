@@ -75,6 +75,27 @@ test('a suggestion the read no longer lists ends the selection', () => {
   assert.deepEqual(keptSelection({ kind: 'suggestion', id: 'gone' }, world), NO_SELECTION)
 })
 
+test('a set loses the clips that can no longer join one; a clip alone needs only to be listed', () => {
+  const set: Selection = { kind: 'clips', identities: ['a', 'b', 'c'], anchor: 'a', last: 'c' }
+  const listed = new Set(['a', 'b', 'c', 'd'])
+  const part = { ...world, clips: listed }
+  // All joinable: the set is kept as it is.
+  assert.equal(keptSelection(set, { ...part, joinable: new Set(['a', 'b', 'c']) }), set)
+  // One no longer played: the set goes on with the rest, `last` moving to one still held.
+  assert.deepEqual(keptSelection(set, { ...part, joinable: new Set(['a', 'b']) }), {
+    kind: 'clips',
+    identities: ['a', 'b'],
+    anchor: 'a',
+    last: 'b',
+  })
+  // One left is a clip alone, not a group of one.
+  assert.deepEqual(keptSelection(set, { ...part, joinable: new Set(['b']) }), { kind: 'clip', identity: 'b' })
+  // None left (an undo of the ignores): nothing is selected.
+  assert.deepEqual(keptSelection(set, { ...part, joinable: new Set() }), NO_SELECTION)
+  // A clip alone is kept while it is listed, played or not.
+  assert.equal(keptSelection({ kind: 'clip', identity: 'd' }, { ...part, joinable: new Set() }).kind, 'clip')
+})
+
 test('nothing stays nothing', () => {
   assert.equal(keptSelection(NO_SELECTION, world), NO_SELECTION)
 })
