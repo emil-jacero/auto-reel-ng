@@ -247,7 +247,7 @@ export function BinPlayer({
   const onOpen = useCallback(() => {
     if (shown !== null) {
       playOnOpen.current = true
-      previews.show(shown, 'player')
+      previews.show(shown)
     }
   }, [previews, shown])
   // Escape: the preview closes, focus stays on Play, and the selection is left as it is.

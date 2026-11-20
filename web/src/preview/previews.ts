@@ -7,17 +7,12 @@
  * Its life is the editor's: leaving Edit mode drops it, and with it every length.
  */
 
-/** Who opened a preview: where Close and Escape return keyboard focus. `player` is the bin's own Play. */
-export type Opener = 'toggle' | 'thumb' | 'player'
-
 /** The editor's previews: which clip's is open, and what a remount or a later check needs. */
 export type ClipPreviews = {
   /** The identity whose preview is open, or null: one on the page at a time. */
   open(): string | null
-  /** Opens `identity`'s preview, closing any other; records the opener and asks once for focus on Play. */
-  show(identity: string, from: Opener): void
-  /** Who opened `identity`'s open preview: where Close and Escape return focus. */
-  opener(identity: string): Opener | null
+  /** Opens `identity`'s preview, closing any other, and asks once for focus on Play. */
+  show(identity: string): void
   /** True once after each `show(identity, …)`: `ClipPreview` then focuses Play. A remount finds false. */
   takeFocus(identity: string): boolean
   /** Changes on every `show`, so a mounted `ClipPreview` re-runs its focus effect. */
@@ -45,7 +40,6 @@ export type ClipPreviews = {
 
 export function createClipPreviews(): ClipPreviews {
   let current: string | null = null
-  let from: Opener | null = null
   // The one-shot focus request, for `current` only.
   let focusAsked = false
   let shows = 0
@@ -61,18 +55,16 @@ export function createClipPreviews(): ClipPreviews {
   }
   return {
     open: () => current,
-    show(identity, opener) {
+    show(identity) {
       if (current !== null && current !== identity) {
         playheads.delete(current)
         originals.delete(current)
       }
       current = identity
-      from = opener
       focusAsked = true
       shows += 1
       notify()
     },
-    opener: (identity) => (current === identity ? from : null),
     takeFocus(identity) {
       if (current !== identity || !focusAsked) {
         return false
@@ -88,7 +80,6 @@ export function createClipPreviews(): ClipPreviews {
         return
       }
       current = null
-      from = null
       focusAsked = false
       notify()
     },
@@ -99,7 +90,6 @@ export function createClipPreviews(): ClipPreviews {
         return
       }
       current = null
-      from = null
       focusAsked = false
       notify()
     },

@@ -144,9 +144,6 @@ export function playheadWords(atMs: number, lengthMs: number, cuts: readonly Lis
 
 // The preview's copy. `<name>` is the clip's name as its row names it.
 
-export const WATCH = 'Watch'
-/** The panel's toggle while its preview is open: a press closes the player. */
-export const HIDE_PLAYER = 'Hide player'
 export const LOADING = 'Loading…'
 export const SKIP_CUTS = 'Skip cuts'
 export const SET_WORDS: Record<CutField, string> = { start: 'Set From', end: 'Set To' }

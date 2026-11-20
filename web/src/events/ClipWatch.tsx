@@ -109,7 +109,7 @@ export const PlayControl = memo(function PlayControl({
         if (open) {
           previews.hide(identity)
         } else {
-          previews.show(identity, 'toggle')
+          previews.show(identity)
         }
       }}
     >

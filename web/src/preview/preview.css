@@ -21,10 +21,6 @@
     outline-offset: 2px;
   }
 
-  .preview-toggle {
-    justify-self: start;
-  }
-
   .clip-preview {
     display: grid;
     gap: var(--s-2);
