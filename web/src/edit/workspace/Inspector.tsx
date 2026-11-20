@@ -13,16 +13,18 @@ import type { InspectorTab } from './inspectorTabs.ts'
 /*
  * The workspace inspector (`editor-selection`): the tabs Clip, Title card, Suggestion and Event.
  * The tab shown follows the selection (`shownTab`), and the operator may pick another by hand.
- * Event holds the editor's event content; Clip, Title card and Suggestion are slots the Timeline
- * portals its panels and the card editor into (`TimelinePanesContext`), mounted while hidden so
- * the portals have somewhere to go.
+ * Event holds the editor's event content and Clip the editor's Clip tab (`ClipInspector`, built
+ * from the draft); Title card and Suggestion are slots the Timeline portals its suggestion panel
+ * and the card editor into (`TimelinePanesContext`), mounted while hidden so the portals have
+ * somewhere to go. The Timeline's track-only part of the Clip tab goes into a slot of its own, in
+ * `ClipInspector`.
  */
 
 export function Inspector({
   tab,
   onTab,
   event,
-  clipSlot,
+  clip,
   suggestionSlot,
   cardSlot,
 }: {
@@ -30,8 +32,9 @@ export function Inspector({
   onTab: (tab: InspectorTab) => void
   /** The Event tab. */
   event: ReactNode
-  /** Where the Timeline's clip panel goes (the Clip tab), its suggestion panel and the card editor. */
-  clipSlot: (node: HTMLElement | null) => void
+  /** The Clip tab; null while no clip is selected. */
+  clip: ReactNode
+  /** Where the Timeline's suggestion panel and the card editor go. */
   suggestionSlot: (node: HTMLElement | null) => void
   cardSlot: (node: HTMLElement | null) => void
 }) {
@@ -87,10 +90,7 @@ export function Inspector({
       </div>
       {panel(
         'clip',
-        <>
-          <div ref={clipSlot} className="ws-slot" />
-          <p className="ws-empty">{INSPECTOR_TAB_EMPTY.clip}</p>
-        </>,
+        clip ?? <p className="ws-empty">{INSPECTOR_TAB_EMPTY.clip}</p>,
       )}
       {panel(
         'card',

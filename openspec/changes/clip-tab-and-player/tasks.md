@@ -36,7 +36,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   focuses Play (design D7). Verify in Playwright:
   - every scenario of "A clip's preview sets cut times at the playhead and plays the clip as the movie will";
   - Set From with the row's panel hidden makes its Cuts control say "typed" and holds Save.
-- [ ] 2.3 `ClipInspector` and `ClipTrackPart` (design D5): the tab for any selected clip, with Move earlier and later,
+- [x] 2.3 `ClipInspector` and `ClipTrackPart` (design D5): the tab for any selected clip, with Move earlier and later,
   Move to…, Rotate, Ignore or Include, and Remove or Undo, plus the track-only part through its slot. Verify in
   Playwright:
   - every scenario of "The Clip tab offers a clip's edits whether or not the track draws it" and "The Clip tab edits

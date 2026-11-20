@@ -14,9 +14,10 @@ import type { InspectorTab } from './inspectorTabs.ts'
  * width, the app header hidden (`data-workspace` on <html>), a top bar and four panes: the clip
  * bin (left), the viewer (centre), the inspector (right) and the Timeline (bottom). Each pane
  * scrolls on its own; below 960 CSS px the panes stack in one column (viewer, Timeline,
- * inspector, bin) and the page scrolls. The Timeline puts its picture in the viewer and its clip
- * and suggestion panels in the inspector's tabs (`TimelinePanesContext`): one tree, one state, one
- * video. The inspector (`Inspector.tsx`) follows the page's selection without moving focus.
+ * inspector, bin) and the page scrolls. The Timeline puts its picture in the viewer, its
+ * track-only part of the Clip tab in the editor's Clip tab and its suggestion panel in the
+ * Suggestion tab (`TimelinePanesContext`): one tree, one state, one video. The inspector
+ * (`Inspector.tsx`) follows the page's selection without moving focus.
  */
 
 /** Stacked, the top bar sticks while it takes at most this share of the window's height… */
@@ -29,6 +30,8 @@ export function Workspace({
   player,
   bin,
   event,
+  clip,
+  clipSlot,
   timeline,
   viewer,
   tab,
@@ -40,6 +43,13 @@ export function Workspace({
   bin: ReactNode
   /** The inspector's Event tab. */
   event: ReactNode
+  /**
+   * The inspector's Clip tab, built by the editor (`ClipInspector`, `ClipGroupTab`); null while no
+   * clip is selected, which shows the tab's hint.
+   */
+  clip: ReactNode
+  /** The node the Clip tab holds for the Timeline's track-only part (`ClipInspector`'s slot), or null. */
+  clipSlot: HTMLElement | null
   timeline: ReactNode
   /** What the viewer shows while the Timeline has no picture there (reading, a failure, Prepare). */
   viewer: ReactNode
@@ -51,7 +61,6 @@ export function Workspace({
   onTab: (tab: InspectorTab) => void
 }) {
   const [viewerPane, setViewerPane] = useState<HTMLElement | null>(null)
-  const [clipPane, setClipPane] = useState<HTMLElement | null>(null)
   const [suggestionPane, setSuggestionPane] = useState<HTMLElement | null>(null)
   const [cardPane, setCardPane] = useState<HTMLElement | null>(null)
   const topRef = useRef<HTMLDivElement>(null)
@@ -155,8 +164,8 @@ export function Workspace({
   }, [])
 
   const panes = useMemo<TimelinePanes>(
-    () => ({ viewer: viewerPane, clip: clipPane, suggestion: suggestionPane, card: cardPane }),
-    [viewerPane, clipPane, suggestionPane, cardPane],
+    () => ({ viewer: viewerPane, clip: clipSlot, suggestion: suggestionPane, card: cardPane }),
+    [viewerPane, clipSlot, suggestionPane, cardPane],
   )
 
   return (
@@ -180,7 +189,7 @@ export function Workspace({
             tab={tab}
             onTab={onTab}
             event={event}
-            clipSlot={setClipPane}
+            clip={clip}
             suggestionSlot={setSuggestionPane}
             cardSlot={setCardPane}
           />
