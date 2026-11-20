@@ -15,7 +15,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 1. Rules (web/src/edit)
 
-- [ ] 1.1 Add `binPlayer.ts` (`shownClip`, design D1) and `binPlayerPref.ts` (design D3). Verify with
+- [x] 1.1 Add `binPlayer.ts` (`shownClip`, design D1) and `binPlayerPref.ts` (design D3). Verify with
   `binPlayer.test.ts` and `binPlayerPref.test.ts`. They must check:
   - each selection kind, including a cut, several clips and a card that keeps the clip shown;
   - a shown clip that leaves the event or the disk;
