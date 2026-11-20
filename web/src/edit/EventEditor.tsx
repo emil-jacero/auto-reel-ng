@@ -2106,10 +2106,10 @@ export function EventEditor({
   )
 
   // The Track hands over where a release at a point lands on it; a track drag asks whether a
-  // point is over the bin (the workspace's bin pane).
+  // point is over the bin (the workspace's bin column: the player above its lists is the bin's too).
   const trackAt = useRef<TrackBridge['current']>(null)
   const overBin = useCallback((x: number, y: number) => {
-    const box = document.querySelector('.ws-bin')?.getBoundingClientRect()
+    const box = document.querySelector('.ws-binbox')?.getBoundingClientRect()
     return box !== undefined && x >= box.left && x < box.right && y >= box.top && y < box.bottom
   }, [])
   const overTrack = useCallback((x: number, y: number) => trackAt.current?.(x, y, '') != null, [])
