@@ -1,3 +1,4 @@
+import type { Clip } from '../api/event'
 import type { Selection } from './workspace/selection.ts'
 import { lastClip } from './workspace/selection.ts'
 
@@ -30,4 +31,14 @@ export function shownClip(
     return was
   }
   return null
+}
+
+/**
+ * A clip with a Cuts control and panel: in the movie (not excluded) and active or new. The clip
+ * rows draw their Cuts control by this rule, and the player offers Set From and Set To by it, so
+ * a time it writes always lands in a panel the operator can reach. An ignored clip plays, but is
+ * read-only in the player.
+ */
+export function cuttable(clip: Pick<Clip, 'excluded' | 'status'>): boolean {
+  return !clip.excluded && (clip.status === 'active' || clip.status === 'new')
 }

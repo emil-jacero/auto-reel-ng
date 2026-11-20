@@ -70,6 +70,10 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
   works with the panel hidden. The `cut-typed` action then marks the clip "typed", as today, so the row's Cuts control
   says "typed" and the save bar holds Save.
 - **Not shown.** Set From and Set To do not open the panel, scroll the bin or move focus.
+- **Only a clip with a Cuts panel.** The player plays any clip on disk, but offers Set From and Set To only for a
+  clip that can be cut: not excluded, and active or new (`cuttable`, the rule that gives a row its Cuts control). For
+  an ignored or excluded clip the preview is read-only (no Set buttons), so a typed time can never be held where the
+  operator has no field to clear it. Include clip makes it cuttable.
 
 ### D5. The Clip tab is built by the editor (`edit/ClipInspector.tsx`)
 - **Two parts.**

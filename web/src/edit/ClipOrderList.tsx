@@ -34,6 +34,7 @@ import { cutsOf, keptOriginal, movedSet } from './draft'
 import type { ChapterKey, Cuts, DraftCut, Rotations } from './draft'
 import { CHAPTER_DROP } from './dragSlots'
 import { emptyAreaWords, holdsNothing } from './emptyChapter'
+import { cuttable as cuttableClip } from './binPlayer.ts'
 import { groupWords } from './marks'
 import type { IgnoredGroup } from './wideBin.ts'
 import { pressOf } from './workspace/selection.ts'
@@ -453,7 +454,7 @@ const ClipRow = memo(function ClipRow({
   // excluded clip is not in the movie, so its cuts do not apply: neither is shown. They
   // stay in the draft, and Save writes them back unchanged.
   const { excluded } = clip
-  const cuttable = !excluded && (status === 'active' || status === 'new')
+  const cuttable = cuttableClip(clip)
   const kept = keptCuts(cuts).length
   // An excluded clip plays nothing of its cuts: its whole length, as for a clip with none.
   const length = useMemo(
