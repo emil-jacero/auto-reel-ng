@@ -2478,12 +2478,38 @@ export function EventEditor({
     setWatchAsk((asked) => asked + 1)
   }, [])
   // A clip that left the event ends its selection (`keptSelection`). The clips the event lists, not
-  // the ones the track draws: the Clip tab also shows an ignored or a missing clip.
+  // the ones the track draws: the Clip tab also shows an ignored or a missing clip. A set keeps only
+  // the clips that can still join one (the rule `binPress` joins by), so a clip that stops being
+  // played (an ignore, an undo) leaves it, and the group tab never shows a group of one or none.
   useEffect(() => {
     if (detail !== null) {
-      keepSelection({ clips: new Set(clips.keys()) })
+      keepSelection({
+        clips: new Set(clips.keys()),
+        joinable: new Set([...clips].filter(([, clip]) => canMark(clip)).map(([identity]) => identity)),
+      })
     }
   }, [detail, clips, keepSelection])
+  // A clip or cut selection ending (Escape, a clear) while focus was in the Clip tab, which then
+  // unmounts: the Timeline puts focus on the clip's block, and for a clip it does not draw
+  // (ignored, missing, removed, or any clip in Prepare) it is put on the clip's bin row, so it
+  // never drops onto the page body. The Timeline's layout effect runs first, so a block wins.
+  const heldIdentity =
+    cards.selection.kind === 'cut' ? cards.selection.identity : lastClip(cards.selection)
+  const wasHeld = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const was = wasHeld.current
+    wasHeld.current = heldIdentity
+    if (was === null || heldIdentity !== null) {
+      return
+    }
+    const active = document.activeElement
+    if (active !== null && active !== document.body) {
+      return
+    }
+    Array.from(document.querySelectorAll<HTMLElement>('li.clip-item[data-identity]'))
+      .find((row) => row.dataset.identity === was && row.closest('[hidden]') === null)
+      ?.focus({ preventScroll: true })
+  }, [heldIdentity])
   // The Clip tab's slot for the Timeline's track-only part (`ClipInspector`), once it is mounted.
   const [clipSlot, setClipSlot] = useState<HTMLElement | null>(null)
   // The selection ends with its chapter: deleted in the draft, it is gone from the list.
@@ -3566,11 +3592,16 @@ export function EventEditor({
       key: chapter.key,
       name: chapterHeading(chapter.name, hasNamedChapter),
     }))
-    if (tabSelection.kind === 'clips') {
-      const held = new Set(selectedClips(tabSelection))
-      const played = lists
-        .flatMap((chapter) => draft.orders.get(chapter.key) ?? NONE_REMOVED)
-        .filter((identity) => held.has(identity))
+    const held = new Set(selectedClips(tabSelection))
+    const played =
+      tabSelection.kind === 'clips'
+        ? lists
+            .flatMap((chapter) => draft.orders.get(chapter.key) ?? NONE_REMOVED)
+            .filter((identity) => held.has(identity))
+        : []
+    // A set the draft no longer plays two clips of (the effect above trims it a render later) is
+    // never shown as a group of one or none: the one clip left gets its own tab, none gets no tab.
+    if (tabSelection.kind === 'clips' && played.length >= 2) {
       // Only the five names the tab shows are worked out: a range over 400 clips costs no more.
       clipTab = (
         <ClipGroupTab
@@ -3584,7 +3615,12 @@ export function EventEditor({
         />
       )
     } else {
-      const identity = tabSelection.kind === 'cut' ? tabSelection.identity : lastClip(tabSelection)
+      const identity =
+        tabSelection.kind === 'cut'
+          ? tabSelection.identity
+          : tabSelection.kind === 'clips'
+            ? (played[0] ?? null)
+            : lastClip(tabSelection)
       const clip = identity === null ? undefined : clips.get(identity)
       if (identity !== null && clip !== undefined) {
         const own = lists.find((chapter) => (draft.orders.get(chapter.key) ?? []).includes(identity))

@@ -28,6 +28,12 @@ export const NO_SELECTION: Selection = { kind: 'none' }
 export type World = {
   /** Identities of the clips the event lists. */
   clips: ReadonlySet<string>
+  /**
+   * The listed clips that can be in a set of several (played and on disk, the rule a press
+   * joins by). A set loses the clips that are not; a clip selected alone needs only to be listed.
+   * Absent: every listed clip can.
+   */
+  joinable?: ReadonlySet<string>
   /** Identity → its cuts as listed; a removed cut is gone. */
   cuts: ReadonlyMap<string, readonly Pick<DraftCut, 'key' | 'removed'>[]>
   /** Keys of the chapters the draft lists, deleted ones left out. */
@@ -44,11 +50,14 @@ export function keptSelection(sel: Selection, world: World): Selection {
     case 'clip':
       return world.clips.has(sel.identity) ? sel : NO_SELECTION
     case 'clips': {
-      const kept = sel.identities.filter((identity) => world.clips.has(identity))
+      const joins = world.joinable
+      const kept = sel.identities.filter(
+        (identity) => world.clips.has(identity) && (joins === undefined || joins.has(identity)),
+      )
       if (kept.length === sel.identities.length) {
         return sel
       }
-      return clipsOf(kept, sel.anchor, world.clips.has(sel.last) ? sel.last : (kept[kept.length - 1] ?? sel.last))
+      return clipsOf(kept, sel.anchor, kept.includes(sel.last) ? sel.last : (kept[kept.length - 1] ?? sel.last))
     }
     case 'cut': {
       const cut = world.cuts.get(sel.identity)?.find((c) => c.key === sel.key)
