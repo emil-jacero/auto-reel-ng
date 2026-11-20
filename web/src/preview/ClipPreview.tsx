@@ -436,10 +436,17 @@ export const ClipPreview = memo(function ClipPreview({
   const focusPlay = useRef(false)
   // Play pressed before the clip's metadata was read: it plays once it can.
   const pendingPlay = useRef(autoPlay)
+  // A failure ends that attempt: Try again, or Play original after a copy's failure, opens the
+  // preview ready to play, not playing.
   // Opened by Watch, the thumbnail or Try again (not remounted by a move): say when it is ready.
   const sayReady = useRef(false)
   // The announcement of a file swap, said with the notes the new file brings.
   const swapWords = useRef<string | null>(null)
+  useEffect(() => {
+    if (phase === 'failed') {
+      pendingPlay.current = false
+    }
+  }, [phase])
 
   const spans = useMemo(
     () => (lengthMs === null ? [] : skipSpans(cuts, lengthMs)),
