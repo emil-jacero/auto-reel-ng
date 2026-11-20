@@ -167,6 +167,14 @@ export const watchName = (name: string) => `Watch ${name}`
 export const hideName = (name: string) => `Hide player of ${name}`
 export const regionName = (name: string) => `Player for ${name}`
 export const closeName = (name: string) => `Close the player of ${name}`
+/** The bin player's own Hide and Show: the player collapses to its heading, and comes back. */
+export const hidePlayerName = (name: string) => `Hide the player of ${name}`
+export const SHOW_PLAYER = 'Show player'
+export const SHOW_PLAYER_NAME = 'Show the player'
+export const HIDE_PLAYER_BARE = 'Hide the player'
+export const NO_CLIP_TO_WATCH = 'Select a clip to watch it.'
+/** Under a closed player's picture, where an open one says which file plays: nothing is loaded yet. */
+export const NOT_LOADED = 'Nothing is loaded until you press Play.'
 export const playName = (name: string, playing: boolean) => `${playing ? 'Pause' : 'Play'} ${name}`
 export const playheadName = (name: string) => `Playhead of ${name}`
 export const skipName = (name: string) => `Skip cuts of ${name}`

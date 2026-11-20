@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { blockYieldsSpace, focusFacts, SHORTCUT_GROUPS, SHORTCUTS, workspaceCommand } from './shortcuts.ts'
+import {
+  blockYieldsSpace,
+  focusFacts,
+  PREVIEW_SELECTOR,
+  SHORTCUT_GROUPS,
+  SHORTCUTS,
+  workspaceCommand,
+} from './shortcuts.ts'
 import type { Command, ElementLike, Env, FocusFacts, Press, PressSpec } from './shortcuts.ts'
 
 const press = (over: PressSpec): Press => ({
@@ -310,7 +317,7 @@ const el = (tagName: string, over: Partial<ElementLike> & { role?: string; inPre
   return {
     tagName,
     getAttribute: (name) => (name === 'role' ? (role ?? null) : null),
-    closest: (selector) => (inPreview === true && selector === '.clip-preview' ? {} : null),
+    closest: (selector) => (inPreview === true && selector === PREVIEW_SELECTOR ? {} : null),
     ...rest,
   }
 }
@@ -379,6 +386,11 @@ test('focusFacts: Space controls are buttons, checkboxes, radios, summaries and 
   assert.equal(focusFacts(el('VIDEO'), env()).spaceControl, false)
   assert.equal(focusFacts(el('DIV', { role: 'slider' }), env()).spaceControl, false)
   assert.equal(focusFacts(el('INPUT', { type: 'range' }), env()).spaceControl, false)
+})
+
+test('the preview selector names a clip preview and the bin player around it, open or not', () => {
+  const selectors = PREVIEW_SELECTOR.split(',').map((part) => part.trim())
+  assert.deepEqual(selectors, ['.clip-preview', '.bin-player'])
 })
 
 test('focusFacts: inside a clip preview, and what the page says', () => {

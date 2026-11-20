@@ -2,10 +2,17 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
+  NOT_LOADED,
+  NO_CLIP_TO_WATCH,
+  SHOW_PLAYER,
+  SHOW_PLAYER_NAME,
   STOP_EDITING,
   changedWords,
+  closeName,
   goneWords,
+  hidePlayerName,
   offersSkip,
+  regionName,
   playheadWords,
   staleAdvice,
   timeCells,
@@ -118,5 +125,23 @@ describe('the player\'s visible time', () => {
 
   it('keeps the slider\'s words in the Cuts panel\'s form', () => {
     assert.equal(playheadWords(1234, 6020, []), '0:01.234 of 0:06.02')
+  })
+})
+
+describe('the bin player’s words', () => {
+  it('name the region, Hide player and Show player as the spec says', () => {
+    assert.equal(regionName('s1710001.mp4'), 'Player for s1710001.mp4')
+    assert.equal(hidePlayerName('s1710001.mp4'), 'Hide the player of s1710001.mp4')
+    assert.equal(SHOW_PLAYER, 'Show player')
+    assert.equal(SHOW_PLAYER_NAME, 'Show the player')
+    assert.equal(NO_CLIP_TO_WATCH, 'Select a clip to watch it.')
+  })
+
+  it('leave the read view’s Close as it was', () => {
+    assert.equal(closeName('a.mp4'), 'Close the player of a.mp4')
+  })
+
+  it('say under a closed picture that nothing is loaded', () => {
+    assert.equal(NOT_LOADED, 'Nothing is loaded until you press Play.')
   })
 })

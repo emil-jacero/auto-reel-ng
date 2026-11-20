@@ -44,7 +44,7 @@ export type FocusFacts = {
   field: boolean
   /** A `dialog[open]` is on the page. */
   dialogOpen: boolean
-  /** Focus is inside an open `.clip-preview`. */
+  /** Focus is inside a `.clip-preview`, or anywhere in the bin's player (`.bin-player`), open or not. */
   inPreview: boolean
   /** The Timeline's drag store holds a drag, or a pointer is held (D2). */
   dragging: boolean
@@ -190,6 +190,9 @@ export function blockYieldsSpace(modality: Modality, enabled: boolean, held: boo
   return modality === 'pointer' && enabled && !held
 }
 
+/** A clip preview, and the bin's player around it: the keys the preview takes are its own. */
+export const PREVIEW_SELECTOR = '.clip-preview, .bin-player'
+
 /** The facts `workspaceCommand` needs, read from the focused `target` (null: the page itself). */
 export function focusFacts(target: ElementLike | null, env: Env): FocusFacts {
   const tag = target?.tagName?.toUpperCase()
@@ -203,7 +206,7 @@ export function focusFacts(target: ElementLike | null, env: Env): FocusFacts {
     tag === 'SUMMARY' ||
     (input && type !== undefined && SPACE_INPUTS.has(type)) ||
     (role !== null && SPACE_ROLES.has(role))
-  const preview = target?.closest?.('.clip-preview')
+  const preview = target?.closest?.(PREVIEW_SELECTOR)
   return {
     enabled: env.enabled,
     field: isTextTarget(target),

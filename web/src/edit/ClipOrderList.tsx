@@ -278,10 +278,13 @@ const NO_SHIFT: SortingStrategy = () => null
 
 // Constant elements: React skips them on the re-render every row gets per drag step.
 const NO_SELECT = () => {}
+const NO_WATCH = () => {}
 const NONE_SELECTED: ReadonlySet<string> = new Set()
 
 /** A press on a bin row's clip: alone, added or taken out, or a range. */
 export type SelectHandler = (identity: string, press: Press) => void
+/** The thumbnail's Watch: select the clip alone, show the player, focus its Play. */
+export type WatchHandler = (identity: string) => void
 const GRIP = <Icon name="grip-vertical" />
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
@@ -362,6 +365,7 @@ const ClipRow = memo(function ClipRow({
   selected,
   lead,
   onSelectClip,
+  onWatchClip,
 }: {
   eventId: string
   clip: Clip
@@ -396,6 +400,8 @@ const ClipRow = memo(function ClipRow({
   /** The clip is the one pressed last: the only selected row that scrolls into view. */
   lead: boolean
   onSelectClip: SelectHandler
+  /** The thumbnail's Watch (`WatchHandler`). */
+  onWatchClip: WatchHandler
 }) {
   // The marked clips a held group stands for, or null: then no row makes room (a line shows
   // at every gap) and the held rows are dimmed.
@@ -478,14 +484,9 @@ const ClipRow = memo(function ClipRow({
     panels.set(identity, { open: !open, start: held?.start ?? '', end: held?.end ?? '' })
     setOpen(!open)
   }, [identity, open, panels])
-  // The thumbnail's Watch: shows the panel as the Cuts control does, then opens the
-  // preview there. Stable, so RowBody's memo holds on every drag step.
-  const onWatch = useCallback(() => {
-    const held = panels.get(identity)
-    panels.set(identity, { open: true, start: held?.start ?? '', end: held?.end ?? '' })
-    setOpen(true)
-    panels.previews.show(identity, 'thumb')
-  }, [identity, panels])
+  // The thumbnail's Watch: the editor selects the clip, shows the bin's player and puts focus on
+  // its Play. Stable, so RowBody's memo holds on every drag step.
+  const onWatch = useCallback(() => onWatchClip(identity), [identity, onWatchClip])
   // Mounted on its first showing, and then only hidden: what was typed stays.
   const mounted = cuttable && (open || panels.get(identity) !== undefined)
   const panelId = `cuts-${useId()}`
@@ -619,11 +620,9 @@ const ClipRow = memo(function ClipRow({
           eventId={eventId}
           identity={identity}
           mtime={clip.mtime ?? null}
-          proxy={clip.proxy ?? null}
           duration={clip.duration ?? null}
           name={name}
           cuts={cuts}
-          turn={turn}
           open={open}
           locked={locked}
           panels={panels}
@@ -855,6 +854,7 @@ export const ClipOrderList = memo(function ClipOrderList({
   selectedClips = NONE_SELECTED,
   leadClip = null,
   onSelectClip = NO_SELECT,
+  onWatchClip = NO_WATCH,
   ignoredApart = false,
 }: {
   /** The event, for its clips' thumbnail addresses. */
@@ -919,6 +919,8 @@ export const ClipOrderList = memo(function ClipOrderList({
   leadClip?: string | null
   /** A press on a bin row: selects its clip, adds or takes it out, or ranges (`pressOf`). */
   onSelectClip?: SelectHandler
+  /** The thumbnail's Watch: select the clip, show the player, focus Play. */
+  onWatchClip?: WatchHandler
   /** The ignored clips are listed apart, after the chapters (`IgnoredBin`): list none here. */
   ignoredApart?: boolean
 }) {
@@ -1109,6 +1111,7 @@ export const ClipOrderList = memo(function ClipOrderList({
                   selected={selectedClips.has(identity)}
                   lead={leadClip === identity}
                   onSelectClip={onSelectClip}
+                  onWatchClip={onWatchClip}
                 />
               )
             })}
