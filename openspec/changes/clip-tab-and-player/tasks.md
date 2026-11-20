@@ -51,7 +51,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - take screenshots of the player in light and dark at 1440, 1100 and 390 px, shown and hidden, and look at them for
     clipping;
   - check that selecting 50 clips one after the other makes no media request and creates no clip video.
-- [ ] 3.2 Record the change:
+- [x] 3.2 Record the change:
   - HLD D-28: a "Player" bullet (the preview docks in the bin, shows the selection's last clip, and loads on Play only)
     and the Clip tab built by the editor with the Timeline's track-only part. Amend D-20's one-video note to name the
     player.

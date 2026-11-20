@@ -971,6 +971,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **Slice 9 is built** (`chapters-in-inspector`, web only; D-28): the Event tab holds a Chapters list (Edit title card,
     Move up, Move down, Delete, Add chapter), and the bin's chapter headings are plain; the same rules, a new home; no
     API, engine or `RENDER_GRAPH_VERSION` change.
+    **Slice 10 is built** (`clip-tab-and-player`, web only; D-28, D-20): the clip preview docks above the bin's lists as a
+    player that shows the selected clip, loads on Play only and hides to a one-line bar; the Clip tab is built by the
+    editor for any selected clip (move earlier and later, Include, Ignore, Remove), with the Timeline adding only its
+    track-only part; no API, engine or `RENDER_GRAPH_VERSION` change.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -1461,7 +1465,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     and the save bar counts "1 cut trimmed". Save is the existing whole-document `PUT` under `If-Match`; the service edits
     only the span that differs and keeps its comment. **One video in Edit mode**: a clip preview and the Timeline's video
     release each other through the editor's preview store (a preview open: the Timeline renders no `<video>`, keeps its
-    playhead and handles; a scrub or Play closes the preview and creates the video at the playhead).
+    playhead and handles; a scrub or Play closes the preview and creates the video at the playhead). Since 2026-11-20 (change `clip-tab-and-player`, D-28) the preview is the bin's **player**, which
+    shows the selected clip's thumbnail and loads nothing until its Play: selecting a clip, on the track or in the bin,
+    no longer releases the Timeline's video; only the player's Play does.
   - **The frame grid decides the numbers.** The model's limits are frame times, so on a 50 fps proxy (the dev library's
     clips) three frames are 60 ms and the cut 1.0 to 2.5 s has a start range of 0 to 2.44; on a 25 fps proxy it is 2.36,
     and "+1 s" from 2.5 s lands on 3.52. A typed time is not rounded.
@@ -2126,6 +2132,27 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     counts, the busy-control rule, touch sizes), and so are the handlers in `EventEditor.tsx`. After Escape in the card
     editor, focus returns to the row's Edit title card button. An empty chapter's hint points at Move to… instead of
     the bin's drag and Move marked to…. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
+  - **Player (change `clip-tab-and-player`, slice 10).** The clip preview left the Cuts panel and docks above the bin's
+    lists (`edit/BinPlayer.tsx`; the bin pane is a column of the player, which does not scroll, and the lists). It shows
+    the selection's last clip, or a selected cut's clip, and keeps it while a card, a suggestion or nothing is selected
+    (`shownClip`, `edit/binPlayer.ts`, pure). **It loads on Play only:** until then it draws the clip's thumbnail and no
+    media request is made, so selecting clips stays free. Play opens the preview, which releases the Timeline's video
+    (D-20, "One video in Edit mode"); moving the Timeline's playhead closes it. **Hide player** collapses it to a bar
+    with the clip's name and Show player, closes an open preview and is kept in `localStorage` (`auto-reel:bin-player`
+    = `hidden`; shown when the browser keeps nothing). Set From and Set To write the shown clip's Cuts panel fields,
+    shown or hidden, and are offered only for a clip that can be cut. A row's thumbnail ("Watch <name>") selects the
+    clip and focuses the player's Play. The whole player counts as a clip preview for the workspace keys. `ClipPreview`
+    is moved, not rewritten. The rows-in-view targets of `compact-bin-tools` are measured with the player hidden.
+  - **The Clip tab is built by the editor (same change).** The tab was drawn by the Timeline for a clip the track
+    draws, so it was empty in Prepare, for an ignored clip and for a missing one, the clips whose edits lived only in the
+    bin rows. `EventEditor` now renders it (`edit/ClipInspector.tsx`) for any selected clip or clips: name, chapter and
+    position from the draft's orders, status in words, **Move earlier** and **Move later** (`edit/stepMove.ts`, pure: one
+    place in the chapter, into the neighbouring chapter at an edge, a missing clip stopping at its chapter's edge; the
+    existing `move` and `clip-drop`), Move to… and Rotate, Include or Ignore by status, and Remove or Undo for a missing
+    clip. The Timeline portals only its track-only part (Trim In and Out, the cuts with "+ Cut at playhead", Use frame
+    as poster) into a slot inside it, and only while it draws the clip. A finger therefore reorders with Move earlier
+    and Move later. The bin rows keep their buttons until `plain-clip-bin`. No API, engine or `RENDER_GRAPH_VERSION`
+    change; no new dependency or draft action.
   - **Not here (slice 2):** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore
     edit), dragging on the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
