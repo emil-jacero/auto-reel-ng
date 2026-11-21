@@ -57,7 +57,15 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
 - **Empty.** With no shown clip the player keeps the closed preview's height: the same 16:9 box holding "Select a clip
   to watch it.", and the same rows (time, Play and playhead, source line, Skip cuts, Set From, Set To), every control
   `aria-disabled`, so the first selection changes no bin row's size or place. The hidden state is unchanged.
-- **Hidden.** It renders a one-line bar with the clip's name and Show player, and closes any open preview.
+- **Hidden.** The player renders nothing of its own and closes any open preview: no bar, no heading. Its Show player
+  button goes through a portal into a slot in the first row of the marks toolbar (`EventEditor`'s `.mark-lead`), next
+  to the Clips help, so the toolbar's two fixed rows, its 88 px and the place of the count and Clear marks do not
+  change ("The marks line is one aligned unit"). The button is named `Show player, <name>` for the shown clip
+  (`Show player` with none). In the workspace's bin it is an icon alone, 32 px square, like the help toggle; and
+  while hidden, a bin narrower than 19rem (a container query on `.ws-binbox`) shows Clear marks as its icon alone,
+  because the help, Show player, the count and Clear marks would not fit a 240 px pane's row. Hide player leaves
+  focus on Show player; Show player leaves it on Hide player; a row's Watch shows the player
+  and focuses Play.
 - **Workspace keys.** The whole player region counts as "inside a clip preview" for `editor-shortcuts`' rules
   (`focusFacts.inPreview`), open or closed. So Space on its Play presses Play even after a pointer press on a row's
   frame, and the arrows on its playhead stay the playhead's.
