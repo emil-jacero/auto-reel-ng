@@ -167,6 +167,11 @@ them in step. Keeping the last clip means that selecting a card to rename it doe
 is asked for" already demanded that, and the one-video rule ("Edit mode holds one video at a time") would otherwise
 take the Timeline's video away on every selection.
 
+The Timeline's own video is the exception to "nothing loads": a drawn track needs ready preview copies and its video
+already holds the copy of the clip at the playhead. A press on a block selects without moving the playhead, so
+selections add no media request; a preview's Play loads the clip's copy at `/proxy?...&v=<ETag>` (the original's
+address carries the clip's mtime as `v`, the copy's carries its entity tag).
+
 ### The Clip tab: drawn by the Timeline or by the editor
 **Context**: the Timeline needs proxies, and the edits a missing, ignored or Prepare-state clip needs are draft edits.
 **Decision**: the editor draws the tab, and the Timeline adds its track-only part (D5).
