@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import type { CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 
 import { clipMediaUrl } from '../api/clipMedia'
 import type { Clip } from '../api/event'
@@ -23,9 +24,9 @@ import {
   NO_CLIP_TO_WATCH,
   SET_WORDS,
   SHOW_PLAYER,
-  SHOW_PLAYER_NAME,
   SKIP_CUTS,
   setWords,
+  showPlayerName,
   timeCells,
 } from '../preview/playback'
 import type { Turn } from '../rotate/turn.ts'
@@ -39,8 +40,9 @@ import type { Selection } from './workspace/selection.ts'
 /*
  * The bin's player (`clip-tab-and-player`, design D2): the one clip preview of Edit mode, at the
  * top of the clip bin, outside the bin's scroll box. It shows the clip the selection names
- * (`shownClip`), as its thumbnail, and loads nothing until Play is pressed. Hide player folds it to
- * its heading and a Show player, and the choice is kept (`binPlayerPref`). The whole region counts
+ * (`shownClip`), as its thumbnail, and loads nothing until Play is pressed. Hide player removes
+ * it, leaving no bar of its own: a Show player button, named for the shown clip, takes its place in
+ * the bin toolbar's first row (`showSlot`), and the choice is kept (`binPlayerPref`). The whole region counts
  * as "inside a clip preview" for the workspace's keys (`.bin-player`, `shortcuts.ts`), open or not.
  *
  * `ClipPreview` does the playing; this decides which clip, and whether it is open. It is keyed by
@@ -54,9 +56,8 @@ const NEVER = (): (() => void) => () => undefined
 
 /** `.preview-play` in a docked preview, and the controls Hide and Show leave focus on. */
 type FocusTarget = 'play' | 'show' | 'hide'
-const FOCUS_SELECTOR: Record<FocusTarget, string> = {
+const FOCUS_SELECTOR: Record<'play' | 'hide', string> = {
   play: '.preview-play',
-  show: '.bin-player-show',
   hide: '.preview-close, .bin-player-hide',
 }
 
@@ -153,6 +154,7 @@ export function BinPlayer({
   panels,
   onTyped,
   focusAsk,
+  showSlot,
   onAnnounce,
 }: {
   eventId: string
@@ -174,6 +176,8 @@ export function BinPlayer({
   onTyped: (identity: string, typed: boolean) => void
   /** Counts the row Watch presses: each moves keyboard focus to Play once the player shows its clip. */
   focusAsk: number
+  /** Where the Show player button goes while the player is hidden: the toolbar's first row. */
+  showSlot: HTMLElement | null
   onAnnounce: (message: string) => void
 }) {
   const id = useId()
@@ -207,6 +211,7 @@ export function BinPlayer({
   const { previews } = panels
   const open = usePreviewOpen(previews, shown ?? '')
   const rootRef = useRef<HTMLDivElement>(null)
+  const showRef = useRef<HTMLButtonElement>(null)
   const focusNext = useRef<FocusTarget | null>(null)
   const playOnOpen = useRef(false)
 
@@ -225,7 +230,11 @@ export function BinPlayer({
   }, [open])
 
   const focusIn = (target: FocusTarget): void => {
-    rootRef.current?.querySelector<HTMLElement>(FOCUS_SELECTOR[target])?.focus({ preventScroll: true })
+    const control =
+      target === 'show'
+        ? showRef.current
+        : rootRef.current?.querySelector<HTMLElement>(FOCUS_SELECTOR[target])
+    control?.focus({ preventScroll: true })
   }
   // Focus once the change is on screen: the control that held it may have been replaced.
   useLayoutEffect(() => {
@@ -309,11 +318,31 @@ export function BinPlayer({
     return checked.ok ? { in: checked.in, out: checked.out } : null
   }, [cuts, fields, length])
 
+  // Hidden, the player has no bar: only the button in the toolbar, which names the shown clip.
+  if (!wanted) {
+    return showSlot === null
+      ? null
+      : createPortal(
+          <button
+            ref={showRef}
+            type="button"
+            className="btn btn-secondary btn-compact bin-player-show"
+            aria-label={showPlayerName(name)}
+            title={SHOW_PLAYER}
+            onClick={onShow}
+          >
+            <Icon name="chevron-down" />
+            <span className="mark-words">{SHOW_PLAYER}</span>
+          </button>,
+          showSlot,
+        )
+  }
+
   return (
     <div
       ref={rootRef}
       className="bin-player"
-      data-state={!wanted ? 'hidden' : shown === null ? 'empty' : open ? 'open' : 'closed'}
+      data-state={shown === null ? 'empty' : open ? 'open' : 'closed'}
       onKeyDown={(event) => {
         // The player's own Escape (the preview's handles its own): never the selection's.
         if (event.key === 'Escape' && !event.defaultPrevented) {
@@ -327,20 +356,9 @@ export function BinPlayer({
           <span>Player</span>
           {name !== null && <span className="bin-player-clip">{name}</span>}
         </h2>
-        {!wanted && (
-          <button
-            type="button"
-            className="btn btn-secondary btn-compact bin-player-show"
-            aria-label={SHOW_PLAYER_NAME}
-            onClick={onShow}
-          >
-            <Icon name="chevron-down" />
-            {SHOW_PLAYER}
-          </button>
-        )}
       </div>
-      {wanted && shown === null && <EmptyPreview onHide={onHide} />}
-      {wanted && shown !== null && ref !== null && name !== null && (
+      {shown === null && <EmptyPreview onHide={onHide} />}
+      {shown !== null && ref !== null && name !== null && (
         <ClipPreview
           key={`${shown}:${open}`}
           id={`player-${id}`}

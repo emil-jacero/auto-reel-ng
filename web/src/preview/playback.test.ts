@@ -5,7 +5,7 @@ import {
   NOT_LOADED,
   NO_CLIP_TO_WATCH,
   SHOW_PLAYER,
-  SHOW_PLAYER_NAME,
+  showPlayerName,
   STOP_EDITING,
   changedWords,
   closeName,
@@ -133,7 +133,8 @@ describe('the bin player’s words', () => {
     assert.equal(regionName('s1710001.mp4'), 'Player for s1710001.mp4')
     assert.equal(hidePlayerName('s1710001.mp4'), 'Hide the player of s1710001.mp4')
     assert.equal(SHOW_PLAYER, 'Show player')
-    assert.equal(SHOW_PLAYER_NAME, 'Show the player')
+    assert.equal(showPlayerName(null), 'Show player')
+    assert.equal(showPlayerName('s1710002.mp4'), 'Show player, s1710002.mp4')
     assert.equal(NO_CLIP_TO_WATCH, 'Select a clip to watch it.')
   })
 

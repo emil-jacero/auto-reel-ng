@@ -164,10 +164,12 @@ export const watchName = (name: string) => `Watch ${name}`
 export const hideName = (name: string) => `Hide player of ${name}`
 export const regionName = (name: string) => `Player for ${name}`
 export const closeName = (name: string) => `Close the player of ${name}`
-/** The bin player's own Hide and Show: the player collapses to its heading, and comes back. */
+/** The bin player's own Hide and Show: the player goes, leaving a button in the toolbar, and comes back. */
 export const hidePlayerName = (name: string) => `Hide the player of ${name}`
 export const SHOW_PLAYER = 'Show player'
-export const SHOW_PLAYER_NAME = 'Show the player'
+/** The hidden player's one control: Show player, naming the shown clip when there is one. */
+export const showPlayerName = (name: string | null) =>
+  name === null ? SHOW_PLAYER : `${SHOW_PLAYER}, ${name}`
 export const HIDE_PLAYER_BARE = 'Hide the player'
 export const NO_CLIP_TO_WATCH = 'Select a clip to watch it.'
 /** Under a closed player's picture, where an open one says which file plays: nothing is loaded yet. */

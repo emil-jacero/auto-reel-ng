@@ -84,7 +84,7 @@ import {
   nameDialogNote,
 } from './chapterNames'
 import { BinPlayer } from './BinPlayer'
-import { setBinPlayerShown } from './binPlayerPref.ts'
+import { setBinPlayerShown, useBinPlayerShown } from './binPlayerPref.ts'
 import { ChapterDrag } from './ChapterDrag'
 import { ChapterList } from './ChapterList'
 import type { ChapterRowModel } from './ChapterList'
@@ -2940,6 +2940,9 @@ export function EventEditor({
     return result
   }, [listedKeys, orders, marks])
   const markLineRef = useRef<HTMLDivElement | null>(null)
+  // Where the bin's player puts its Show player while hidden: the toolbar's first row.
+  const [showSlot, setShowSlot] = useState<HTMLElement | null>(null)
+  const playerShown = useBinPlayerShown()
   const rotateHintId = useId()
   // The bin's toolbar as drawn: it grows with the reason line or the Clips help, and the chapter
   // headings and the scroll padding follow (`--bin-toolbar-measured` on its parent, workspace.css).
@@ -3813,6 +3816,7 @@ export function EventEditor({
               panels={cutPanels.panels}
               onTyped={cutHandlers.onTyped}
               focusAsk={watchAsk}
+              showSlot={showSlot}
               onAnnounce={announce}
             />
           )}
@@ -3828,9 +3832,17 @@ export function EventEditor({
           {detail !== null && (
             // How clips are marked, and, once any is, how many and Clear marks. Its slot keeps
             // its height and room either way, so the first mark moves no row.
-            <div ref={placeMarkLine} className="mark-line" tabIndex={-1}>
+            <div
+              ref={placeMarkLine}
+              className="mark-line"
+              data-player={playerShown ? 'shown' : 'hidden'}
+              tabIndex={-1}
+            >
               <div className="mark-head">
-                <HelpToggle help={clipsHelp} section="Clips" />
+                <span className="mark-lead">
+                  <HelpToggle help={clipsHelp} section="Clips" />
+                  <span ref={setShowSlot} className="mark-lead-player" />
+                </span>
                 <span className="mark-line-slot">
                   <span className="mark-count" hidden={marks.size === 0}>
                     {countWords(marks.size)}
@@ -3839,10 +3851,14 @@ export function EventEditor({
                     type="button"
                     className="btn btn-secondary btn-compact"
                     hidden={marks.size === 0}
+                    title="Clear marks"
                     aria-disabled={listsLocked || undefined}
                     onClick={onClearMarks}
                   >
-                    Clear marks
+                    <span className="mark-clear-icon">
+                      <Icon name="x" />
+                    </span>
+                    <span className="mark-clear-words">Clear marks</span>
                   </button>
                 </span>
               </div>

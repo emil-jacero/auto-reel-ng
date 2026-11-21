@@ -51,6 +51,8 @@
   /* The bin's column: the player (it never scrolls), then the scroll box with the lists. */
   .ws-binbox {
     grid-area: bin;
+    /* The toolbar's first row asks how wide the pane is (`.mark-line[data-player='hidden']`). */
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
@@ -811,6 +813,40 @@
       & .mark-line-slot {
         min-inline-size: 0;
         justify-content: flex-end;
+      }
+
+      /* Hidden, the player's Show player sits beside the Clips help as an icon alone, 32 px square
+         (its name says the shown clip, its tooltip "Show player"). */
+      & .mark-line .bin-player-show {
+        min-inline-size: var(--mark-control-h);
+        inline-size: var(--mark-control-h);
+        padding-inline: 0;
+        justify-content: center;
+      }
+
+      /* The two buttons and the count are a row of at most 257 px in the pane's 240 to 320: with
+         Show player beside the help, Clear marks gives way to its icon so the row does not wrap
+         and the first mark moves no row. The words stay for assistive technology and as a tooltip. */
+      @container (width < 19rem) {
+        & .mark-line[data-player='hidden'] .mark-clear-icon {
+          display: inline-flex;
+        }
+
+        & .mark-line[data-player='hidden'] .mark-clear-words {
+          position: absolute;
+          inline-size: 1px;
+          block-size: 1px;
+          overflow: hidden;
+          clip-path: inset(50%);
+          white-space: nowrap;
+        }
+
+        & .mark-line[data-player='hidden'] .mark-line-slot .btn {
+          position: relative;
+          min-inline-size: var(--mark-control-h);
+          padding-inline: 0;
+          justify-content: center;
+        }
       }
 
       /* An open Clips help scrolls inside the toolbar rather than covering the bin. */

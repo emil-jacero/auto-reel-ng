@@ -236,9 +236,27 @@
     min-block-size: var(--mark-control-h);
 
     /* The Clips Help toggle at the start; it keeps its own 44 px height, whatever the line's controls are. */
-    & > .help-toggle {
+    & .help-toggle {
       margin-inline-start: 0;
     }
+  }
+
+  /* The start of the first row: the Clips help and, while the bin's player is hidden, Show player. */
+  .mark-lead {
+    display: flex;
+    align-items: center;
+    gap: var(--mark-gap);
+    min-inline-size: 0;
+
+    /* The slot adds no box (and no gap) of its own: Show player is the lead's own item. */
+    & > .mark-lead-player {
+      display: contents;
+    }
+  }
+
+  /* Clear marks' icon: drawn only where the words give way to it (workspace.css, the narrow bin). */
+  .mark-clear-icon {
+    display: none;
   }
 
   .mark-line .help-toggle {
