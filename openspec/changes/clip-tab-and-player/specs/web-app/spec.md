@@ -131,8 +131,8 @@ The slider's value text stays in the Cuts panel's format, above.
 
 **Sizes and look.**
 - The picture SHALL be shown whole in a box of fixed 16:9 proportions, as wide as the bin allows up to 640
-  CSS pixels and never taller than 360. The box SHALL have that size before the clip's file is read, so that
-  nothing on the page moves when it is.
+  CSS pixels and never taller than 360 (the side pane's box below is capped lower, and is then wider than 16:9).
+  The box SHALL have that size before the clip's file is read, so that nothing on the page moves when it is.
 - In the bin's side pane (a window 960 pixels wide or more) with a fine pointer, the player SHALL stay within a
   height budget of about 200 CSS pixels with its preview closed or open, and also with a preview copy ready (so that
   "Play original" moves nothing): the picture's box is then at most 136 tall, as wide as the pane, and the picture
@@ -255,8 +255,9 @@ Hide player when the control that held it went:
 #### Scenario: A portrait clip is shown whole
 - **WHEN** the event `2024-05-19 - Provklipp` holds `h264-720p-rotate90-aac.mp4`, a 1280×720 clip that its
   container turns to portrait, and the operator opens its preview and plays it
-- **THEN** the picture is taller than wide and wholly inside the preview's 16:9 box, with empty bands at its
-  sides. The box is as large as the box of a landscape clip in the same player would be.
+- **THEN** the picture is taller than wide and wholly inside the preview's picture box, with empty bands at its
+  sides (the box is 16:9 in a stacked page, and in the side pane it is as wide as the pane and at most 136 px tall).
+  The box is as large as the box of a landscape clip in the same player would be.
 
 #### Scenario: No sound for a Sony clip in Firefox
 - **WHEN** in Firefox, which plays no PCM audio, the operator opens the preview of `sony-xavc-1080p25-pcm.mp4`
