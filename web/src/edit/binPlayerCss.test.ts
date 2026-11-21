@@ -82,3 +82,21 @@ describe('the bin toolbar with the player hidden (workspace.css)', () => {
     assert.match(binbox?.[1] ?? '', /container-type:\s*inline-size/)
   })
 })
+
+describe('the marks line with the player hidden on a window under 40rem (edit.css)', () => {
+  const edit = readFileSync(new URL('edit.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const at = edit.indexOf('@media (width < 40rem)')
+  const narrow = edit.slice(at, edit.indexOf('.mark-actions', at))
+
+  it('has a narrow block', () => {
+    assert.notEqual(at, -1)
+  })
+
+  it('Show player and Clear marks give way to their icons, only while hidden, so the first mark wraps nothing', () => {
+    assert.match(narrow, /\.mark-line\[data-player='hidden'\]/)
+    assert.match(narrow, /\.bin-player-show \.mark-words/)
+    assert.match(narrow, /\.mark-clear-words/)
+    assert.match(narrow, /\.mark-clear-icon\s*\{\s*display:\s*inline-flex/)
+    assert.match(narrow, /\.bin-player-show,\s*&\s*\.mark-line-slot \.btn\s*\{[^}]*inline-size:\s*var\(--mark-control-h\)/)
+  })
+})
