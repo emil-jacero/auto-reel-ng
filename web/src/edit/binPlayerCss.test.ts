@@ -40,6 +40,15 @@ describe('binPlayer.css, the compact player (design D2)', () => {
     assert.match(stage?.[1] ?? '', /inline-size:\s*100%/)
   })
 
+  it('keeps the third row inside the least side pane (240 px: 223 px inside the padding)', () => {
+    // 3 buttons of 51 to 85 px and three gaps: the column gap is the 4 px token and the compact buttons'
+    // sides are 6 px, so the row needs about 212 px. With the 8 px gap and sides it needed 237 px and
+    // the player's grid ran 14 px past the pane at 960 to 1160 px wide.
+    const block = compact?.[1] ?? ''
+    assert.match(/\.bin-player \.clip-preview\s*\{([^}]*)\}/.exec(block)?.[1] ?? '', /gap:\s*var\(--player-gap\) var\(--s-1\)/)
+    assert.match(block, /btn-compact:not\(\.preview-original\)\s*\{[^}]*padding-inline:\s*calc\(var\(--s-1\) \* 1\.5\)/)
+  })
+
   it('lays Skip cuts, Set From and Set To in one row and Play original on the picture', () => {
     const block = compact?.[1] ?? ''
     assert.match(block, /\.preview-actions\s*\{\s*display:\s*contents/)
