@@ -135,7 +135,8 @@
     .bin-player .clip-preview {
       grid-template-columns: auto auto auto minmax(0, 1fr);
       grid-template-rows: auto minmax(var(--player-row-h), auto) minmax(var(--player-row-h), auto);
-      gap: var(--player-gap) var(--s-2);
+      /* The least side pane (240 px) holds Skip cuts, Set From and Set To in 223 px: the gaps and the buttons' sides are tight. */
+      gap: var(--player-gap) var(--s-1);
       max-inline-size: none;
     }
 
@@ -240,6 +241,7 @@
     .bin-player .preview-actions .btn-compact:not(.preview-original) {
       grid-row: 3;
       min-block-size: var(--player-row-h);
+      padding-inline: calc(var(--s-1) * 1.5);
     }
 
     .bin-player .preview-skip {
