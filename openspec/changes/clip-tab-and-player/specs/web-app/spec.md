@@ -61,8 +61,11 @@ focus to Play. The thumbnail SHALL keep its box, its size and its place in the r
 size or position. It SHALL NOT start a drag: the drag handle stays a control of its own, and a clip moves only by its
 handle or its move buttons. A thumbnail that could not be shown (its "No preview" box) SHALL act all the same.
 
-**Hide and show.** **Hide player** SHALL collapse the player to its heading and a **Show player** button, close the
-preview, and give the bin's list the room. Show player SHALL bring it back with the shown clip, its preview closed.
+**Hide and show.** **Hide player** SHALL remove the player from the bin, close the preview, and give the bin's list the room. A hidden
+player SHALL have no bar of its own: a **Show player** button SHALL take its place in the first row of the bin's marks
+toolbar, beside the Clips help, and SHALL keep that row's height and the place of the count and Clear marks ("The
+marks line is one aligned unit"). Its name SHALL be "Show player", and "Show player, <name>" while a clip is shown,
+<name> as its row names it. Show player SHALL bring the player back with the shown clip, its preview closed.
 The choice SHALL be kept in the browser for later visits, every read and write of it guarded, and SHALL be "shown"
 when the browser keeps nothing.
 
@@ -88,7 +91,7 @@ replaces.
 
 **Keyboard and focus.** The player's controls SHALL come in this keyboard order, each reachable and usable by
 keyboard alone:
-1. **Hide player**, named "Hide the player of <name>" (while hidden: **Show player**, "Show the player")
+1. **Hide player**, named "Hide the player of <name>" (while hidden, the toolbar's **Show player**, "Show player, <name>")
 2. **Play** / **Pause**, which says which it does
 3. the **playhead**, a slider over the clip's length
 4. **Skip cuts**
@@ -209,7 +212,7 @@ Hide player when the control that held it went:
 - **THEN** the preview closes, the player shows the clip's thumbnail, keyboard focus is on its Play, and
   `s1710001.mp4` is still selected
 - **WHEN** the operator opens it again and presses Hide player
-- **THEN** the preview closes, the player is collapsed to its heading, and keyboard focus is on Show player
+- **THEN** the preview closes, the player is gone from the bin, Show player is in the toolbar's first row, and keyboard focus is on it
 - **WHEN** the operator leaves Edit mode, enters it again and selects a clip
 - **THEN** the player is still collapsed, and Show player brings it back with keyboard focus on Hide player
 
@@ -733,3 +736,57 @@ A workspace shortcut SHALL NOT act, and SHALL leave the key to the browser, in a
 - **WHEN** the operator presses the frame of `s1710002.mp4`'s row in the bin with the pointer, which moves keyboard
   focus to the player's Play, and presses Space
 - **THEN** the player plays `s1710002.mp4`, and the Timeline does not play
+
+### Requirement: The marks line is one aligned unit
+
+The line above the chapters that shows how clips are marked and offers Clear marks, Rotate marked left, Rotate marked right and Move marked
+to… ("Edit mode marks clips to move together", "Edit mode moves the marked clips to a chapter") SHALL read as one calm, aligned toolbar from 320 to
+1280 CSS pixels wide, in both colour schemes and for both kinds of pointer.
+
+- **One control height.** Clear marks, both Rotate buttons, Move and the chapter picker SHALL have the same height, one size for the line (at least 44 CSS pixels
+  where the primary pointer is coarse), and the same corner radius.
+- **One axis.** Controls in a row SHALL have their vertical centres within 1 CSS pixel of each other, and a text beside them (the Help toggle, the count of marked clips, the label "Move marked to…") SHALL be centred on the same axis. No item SHALL sit higher or lower than
+  its neighbours.
+- **Consistent gaps.** The gap between two controls of a group, between two groups and between two rows SHALL each be one value, the same in every row and at every width.
+- **Rows.** The first row SHALL hold the Clips help's toggle and, at its end, the count and Clear marks, and, while the bin's player is hidden, Show player beside the toggle ("Edit mode previews a clip on request"); the second SHALL hold Rotate marked left and right, then the Move marked to… group (label, picker,
+  Move) where it fits; the reason SHALL be shown only after Move is pressed while it is unavailable, as one muted line below the controls, starting at the toolbar's left edge, and SHALL go when the marks, the chosen chapter or the save state change the reason. The reason SHALL NOT float beside Move. Marking or unmarking a clip SHALL move no row of the toolbar other than that line.
+- **In the workspace's clip bin from 960 CSS pixels wide.** The side pane is narrow (240 to 320 CSS pixels), so there, with a fine pointer, the toolbar SHALL keep exactly the two rows above and SHALL NOT wrap further. Rotate marked left and right SHALL show an icon only and offer their names as tooltips; the label "Move marked to…" SHALL name the group without being shown; the Clips help toggle SHALL show its icon alone, 32 CSS pixels square, with its name and its tooltip "Help: Clips"; Show player, while the player is hidden, SHALL show its icon alone beside it, 32 CSS pixels square, with its name ("Show player", or "Show player, <name>" when a clip is shown) and the tooltip "Show player", and in a bin narrower than 19rem (304 CSS pixels) Clear marks SHALL then show its icon alone, with its name and the tooltip "Clear marks", so that the first row holds Show player, the count and Clear marks without wrapping; the picker SHALL fill the second row between the Rotate buttons and Move. The toolbar SHALL be at most 88 CSS pixels tall, SHALL stay at the top of the bin while the bin scrolls, and keep its height whether or not a clip is marked, and whether or not the player is hidden. With a coarse pointer the 44 CSS pixel targets stand: the toolbar keeps the icon-only Rotate buttons, but the Move group wraps to a row of its own when the picker would be left under 7rem wide, so that the chosen chapter can always be read, and the toolbar scrolls with the bin rather than staying at its top.
+- **Narrow windows.** Outside the side-pane bin (the stacked workspace below 960 CSS pixels, and everywhere off the workspace), where the toolbar does not fit a row, it SHALL wrap by whole groups: the Move group goes on a row of its own with the label above, the picker filling the
+  row beside Move; Rotate marked left and right share a row where they fit and otherwise take a row each at the same width. Every wrapped row SHALL keep the one height and the
+  one axis, and nothing SHALL scroll horizontally at 320 CSS pixels.
+- The names, descriptions, `aria-disabled` states and reasons of the controls ("Edit mode moves the marked clips to a chapter") are unchanged.
+
+#### Scenario: Controls in a row share a height and an axis
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` at 1280 px, light and dark, with one clip marked
+- **THEN** the bounding boxes of Clear marks, Rotate marked left, Rotate marked right, the chapter picker and Move have the same height, and in each row the vertical centres of
+  its controls, and of the label "Move marked to…" and the count, differ by at most 1 px
+
+#### Scenario: The reason is one muted line below
+- **WHEN** no clip is marked
+- **THEN** no reason line is shown, and Move's description is "Mark a clip to move it."
+- **WHEN** the operator presses Move
+- **THEN** "Mark a clip to move it." is one muted line below the controls, aligned to the toolbar's left edge, and not beside Move
+- **WHEN** the operator marks a clip
+- **THEN** no row of the toolbar other than that line and no chapter below it moves, and the line says "Choose a chapter."
+
+#### Scenario: The bin's toolbar is two rows
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer, and the operator marks `Kvällen/s1710002.mp4` and scrolls the bin down
+- **THEN**
+  - the toolbar's first row holds the Clips help toggle, "1 clip marked" and Clear marks, and its second row Rotate marked left, Rotate marked right, the chapter picker and Move
+  - Rotate marked left and right show icons and offer their names as tooltips, and the group around the picker is named "Move marked to…"
+  - the toolbar was at most 88 CSS pixels tall before and after the mark, no clip row moved when the clip was marked, and the toolbar stays at the bin's top as it scrolls
+
+#### Scenario: The bin's toolbar with the player hidden
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer and the bin's player hidden, `s1710002.mp4` is selected, and the operator marks `Kvällen/s1710003.mp4`
+- **THEN**
+  - the toolbar's first row holds the Clips help toggle and Show player, named "Show player, s1710002.mp4", and after the mark "1 clip marked" and Clear marks; the player has no bar of its own
+  - the toolbar was 88 CSS pixels tall before and after the mark, no clip row moved when the clip was marked, and no control of the first row wrapped, also in a bin 240 CSS pixels wide, where Clear marks shows its icon alone
+
+#### Scenario: The bin's toolbar with a coarse pointer
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1024×768 window with a coarse pointer
+- **THEN** the chapter picker is wide enough to show "Choose a chapter" (the Move group is on its own row below the Rotate buttons), every toolbar control is at least 44 px high, and the toolbar scrolls away with the bin
+
+#### Scenario: The toolbar wraps in aligned rows
+- **WHEN** the window is 390 px wide and again 320 px, light and dark
+- **THEN** the Move group is on its own row with the label above and the picker beside Move, every row's controls share one height and one centre line (within 1 px), the
+  reason line, when shown, is below them, and the page does not scroll horizontally

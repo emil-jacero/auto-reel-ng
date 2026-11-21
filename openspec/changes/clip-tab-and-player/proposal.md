@@ -30,7 +30,8 @@ This is the third of four changes that together build the plain clip list, the t
     stays free.
   - **One video.** Play releases the Timeline's video, as opening a preview does today. Moving the Timeline's
     playhead closes the preview again, and only one video exists at a time ("Edit mode holds one video at a time").
-  - **Hide player** collapses it to its heading, and the choice is kept in the browser.
+  - **Hide player** removes it, leaving a Show player button in the bin toolbar's first row beside the Clips help, and
+    the choice is kept in the browser.
   - **Its controls are today's**: Play, the playhead, Skip cuts, Set From, Set To, and Play original or preview copy.
     Hide player replaces Close. Set From and Set To write into the shown clip's Cuts panel, shown or hidden.
 - **A row's thumbnail ("Watch <name>")** selects the clip and moves focus to the player's Play. The Cuts panel has no
@@ -76,6 +77,8 @@ This is the third of four changes that together build the plain clip list, the t
   - MODIFIED "The Clip tab edits the selected clip": Move earlier and Move later.
   - MODIFIED "The clip bin holds the chapters' clip lists": the player sits above the lists. The rows-in-view target
     is measured with the player hidden.
+  - MODIFIED "The marks line is one aligned unit": while the player is hidden, its Show player sits in the toolbar's
+    first row beside the Clips help; the toolbar keeps its two rows and its height.
   - MODIFIED "Workspace shortcuts never act in fields, dialogs, a clip preview or a drag" (from `editor-shortcuts`):
     the whole player counts as a clip preview, so Space on its Play presses Play after a click.
 - `event-timeline`:
