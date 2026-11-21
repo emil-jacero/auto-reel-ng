@@ -102,6 +102,16 @@
     cursor: default;
   }
 
+  /* Unavailable is also a dashed edge, never the dimmed color alone. */
+  .cut-bar[aria-disabled='true'] .cut-bar-track {
+    border: 1px dashed var(--fg-muted);
+    box-shadow: none;
+  }
+
+  .clip-preview .btn[aria-disabled='true'] {
+    border-style: dashed;
+  }
+
   .cut-bar-track {
     position: absolute;
     inset-inline: 0;
