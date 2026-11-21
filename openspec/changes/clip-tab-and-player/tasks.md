@@ -51,6 +51,18 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - take screenshots of the player in light and dark at 1440, 1100 and 390 px, shown and hidden, and look at them for
     clipping;
   - check that selecting 50 clips one after the other makes no media request and creates no clip video.
+  Status (2026-11-21, left open): both deltas' scenarios pass or are partial for reasons outside the page in Firefox
+  159, Chrome 158 and Firefox 132, except the 400-clip gates, which are the main specs' figures and fail or are not
+  verified the same way on `origin/main` 1ae3c68b:
+  - first edit over 400 clips (at most 50 ms over the next one): Chrome 158 diff 222 ms against `origin/main`'s 203 ms,
+    Firefox 159 71 ms against 66 ms (interleaved, five fresh loads each);
+  - zoom-slider drag (at most 2 % of frames over 25 ms; production builds, 4x in Chrome, the archived procedure, which
+    reproduces 0.33 % on the archived commit 7538e62c): Chrome 158 3.21 % on the branch against 3.53 % on
+    `origin/main`; Firefox 159 and 132 0 %;
+  - scrub (at least 30 frames per second): Chrome 158 43.9 fps; Firefox 159 27.6 fps against `origin/main`'s 27.5 and the
+    archived commit's 22.2 in the same harness, so that figure is not verified; frame-step p90 26 to 31 ms everywhere;
+  - Skip cuts in Firefox 159: a frame at the cut's own start slips through in about one play in five, from the frame
+    loop in `ClipPreview`, which this change does not touch.
 - [x] 3.2 Record the change:
   - HLD D-28: a "Player" bullet (the preview docks in the bin, shows the selection's last clip, and loads on Play only)
     and the Clip tab built by the editor with the Timeline's track-only part. Amend D-20's one-video note to name the
