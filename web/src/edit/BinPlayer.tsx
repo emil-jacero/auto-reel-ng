@@ -9,7 +9,6 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
 import { clipMediaUrl } from '../api/clipMedia'
@@ -27,10 +26,8 @@ import {
   SKIP_CUTS,
   setWords,
   showPlayerName,
-  timeCells,
 } from '../preview/playback'
 import type { Turn } from '../rotate/turn.ts'
-import { ClockGroup } from '../ui/Clock'
 import { Icon } from '../ui/Icon'
 import { cuttable, shownClip } from './binPlayer.ts'
 import { setBinPlayerShown, useBinPlayerShown } from './binPlayerPref.ts'
@@ -62,20 +59,18 @@ const FOCUS_SELECTOR: Record<'play' | 'hide', string> = {
 }
 
 /**
- * The player with no shown clip: the closed preview's own box and rows (head, 16:9 stage, Play
- * and playhead, the source line, Skip cuts and the Set buttons) with a placeholder for the
- * picture and every control `aria-disabled`, so the first selection moves no row of the bin
- * (design D2). It shares `ClipPreview`'s classes, so the two cannot drift apart in size.
+ * The player with no shown clip: an inert placeholder of the closed player's height (design D2).
+ * It says "Select a clip to watch it.", and Hide player is its only control. The
+ * rows below the picture are the closed preview's own markup with `visibility: hidden`, taken out
+ * of the accessibility tree and the tab order (`aria-hidden`, `inert`): they hold the closed
+ * player's space and show and offer nothing, so the first selection moves no row of the bin. They
+ * share `ClipPreview`'s classes, so the two cannot drift apart in size. The words are one dashed
+ * box laid over the whole of that space.
  */
 function EmptyPreview({ onHide }: { onHide: () => void }) {
-  const { time, length } = timeCells(0, null)
-  const none = (): void => undefined
   return (
     <section className="clip-preview" aria-label="Player">
       <div className="preview-head">
-        <span className="preview-time" aria-hidden="true">
-          <ClockGroup label="Clip" time={time} length={length} />
-        </span>
         <button
           type="button"
           className="btn btn-ghost btn-icon preview-close bin-player-hide"
@@ -86,57 +81,28 @@ function EmptyPreview({ onHide }: { onHide: () => void }) {
           <Icon name="x" />
         </button>
       </div>
-      <div className="preview-stage">
-        <span className="preview-status">{NO_CLIP_TO_WATCH}</span>
+      <div className="preview-stage preview-ghost" aria-hidden="true" inert />
+      <p className="preview-empty">{NO_CLIP_TO_WATCH}</p>
+      <div className="preview-transport preview-ghost" aria-hidden="true" inert>
+        <span className="btn btn-secondary btn-icon preview-play" />
+        <span className="cut-bar" />
       </div>
-      <div className="preview-transport">
-        <button
-          type="button"
-          className="btn btn-secondary btn-icon preview-play"
-          aria-label="Play"
-          aria-disabled="true"
-          onClick={none}
-        >
-          <Icon name="play" />
-        </button>
-        <div
-          className="cut-bar"
-          role="slider"
-          tabIndex={0}
-          aria-label="Playhead"
-          aria-disabled="true"
-          aria-valuemin={0}
-          aria-valuemax={0}
-          aria-valuenow={0}
-          aria-valuetext={NOT_LOADED}
-        >
-          <span className="cut-bar-track" />
-          <span className="cut-bar-head" style={{ '--at': '0%' } as CSSProperties} />
-        </div>
-      </div>
-      <p className="preview-source">{NOT_LOADED}</p>
-      <div className="preview-actions">
-        <button
-          type="button"
-          className="btn btn-ghost btn-compact preview-skip"
-          aria-pressed={false}
-          aria-disabled="true"
-          onClick={none}
-        >
+      <p className="preview-source preview-ghost" aria-hidden="true" inert>
+        {NOT_LOADED}
+      </p>
+      <div className="preview-actions preview-ghost" aria-hidden="true" inert>
+        <span className="btn btn-ghost btn-compact preview-skip">
           <Icon name="skip-forward" />
           {SKIP_CUTS}
-        </button>
+        </span>
         {(['start', 'end'] as const).map((field) => (
-          <button
+          <span
             key={field}
-            type="button"
             className="btn btn-secondary btn-compact preview-set"
             data-field={field}
-            aria-disabled="true"
-            onClick={none}
           >
             {SET_WORDS[field]}
-          </button>
+          </span>
         ))}
       </div>
     </section>

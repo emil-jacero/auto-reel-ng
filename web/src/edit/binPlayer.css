@@ -66,8 +66,196 @@
     }
   }
 
+  /* The empty player's rows below the picture hold the closed player's space and show nothing. */
+  .bin-player .preview-ghost {
+    visibility: hidden;
+  }
+
+  /* The empty player's words: a dashed box over the space the closed player takes. */
+  .bin-player .clip-preview {
+    position: relative;
+  }
+
+  .bin-player .preview-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: var(--s-2);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-md);
+    color: var(--fg-muted);
+    text-align: center;
+  }
+
+  /* Hide player stays above that box. */
+  .bin-player .preview-head {
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Hide player is the head's only control when there is no readout beside it. */
+  .bin-player .preview-close {
+    margin-inline-start: auto;
+  }
+
   /* Closed, the thumbnail is a Play target of its own. */
   .bin-player[data-state='closed'] .preview-stage {
     cursor: pointer;
+  }
+
+  /*
+   * The side pane with a fine pointer: the player's height budget is about 200 px (about 197 px measured:
+   * design D2). The picture's box is at most 136 px tall (the picture sits whole inside it, with
+   * bands at its sides), and Play with the playhead, then Skip cuts, Set From and Set To make two
+   * tight rows under it. What else the preview says is drawn on the picture's box, in one grid
+   * cell with it: the readout and Hide player along its top, the legend under the readout, the
+   * source line and Play original along its foot. The clip's name stays the region's heading for
+   * assistive technology; the selected row and the Clip tab name it on screen. A coarse pointer
+   * or a stacked page (under 960 px) keeps the larger rows above.
+   */
+  @media (width >= 960px) and (not (pointer: coarse)) {
+    .bin-player {
+      --player-row-h: 1.5rem;
+      --player-gap: calc(var(--s-1) / 2);
+      padding-block: var(--s-1);
+      padding-inline: var(--s-2);
+    }
+
+    .bin-player-head {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      min-block-size: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+
+    .bin-player .clip-preview {
+      grid-template-columns: auto auto auto minmax(0, 1fr);
+      grid-template-rows: auto minmax(var(--player-row-h), auto) minmax(var(--player-row-h), auto);
+      gap: var(--player-gap) var(--s-2);
+      max-inline-size: none;
+    }
+
+    /* The actions are the preview's grid items, so Play original can sit on the picture's box. */
+    .bin-player .preview-actions {
+      display: contents;
+    }
+
+    .bin-player .clip-preview > :is(.preview-stage, .preview-head) {
+      grid-area: 1 / 1 / 2 / -1;
+    }
+
+    /* The box is the column's width, 16:9 until it reaches the cap: the picture sits whole in it. */
+    .bin-player .preview-stage {
+      inline-size: 100%;
+      max-block-size: 8.5rem;
+    }
+
+    /* On the picture: light in both schemes, as the status badge (`preview.css`). */
+    .bin-player :is(.preview-time, .preview-source, .preview-legend, .preview-original, .preview-close) {
+      color-scheme: light;
+      z-index: 1;
+    }
+
+    .bin-player .preview-head {
+      align-self: start;
+      padding: var(--s-1);
+      pointer-events: none;
+    }
+
+    .bin-player .preview-head > .preview-close {
+      pointer-events: auto;
+    }
+
+    .bin-player .preview-time {
+      color: var(--fg);
+      padding: 0 var(--s-2);
+      border-radius: var(--r-sm);
+      background: var(--surface-raised);
+      font-size: var(--text-xs);
+      line-height: 1.375rem;
+    }
+
+    .bin-player .preview-close {
+      --_bg: var(--surface-raised);
+      --_fg: var(--fg);
+      --_border: var(--border-strong);
+      inline-size: var(--player-row-h);
+      min-block-size: var(--player-row-h);
+      block-size: var(--player-row-h);
+    }
+
+    .bin-player .preview-legend {
+      grid-area: 1 / 1 / 2 / -1;
+      align-self: start;
+      justify-self: start;
+      margin: calc(var(--player-row-h) + var(--s-2)) var(--s-1) 0;
+      padding: 0 var(--s-2);
+      border-radius: var(--r-sm);
+      background: var(--surface-raised);
+    }
+
+    .bin-player .preview-source {
+      grid-area: 1 / 1 / 2 / -1;
+      align-self: end;
+      justify-self: start;
+      max-inline-size: calc(100% - var(--s-2));
+      margin: var(--s-1);
+      padding: 0 var(--s-2);
+      border-radius: var(--r-sm);
+      background: var(--surface-raised);
+      font-size: var(--text-xs);
+      line-height: 1.25rem;
+    }
+
+    .bin-player .clip-preview:has(.preview-original) .preview-source {
+      max-inline-size: calc(100% - 7.5rem);
+    }
+
+    .bin-player .preview-original {
+      grid-area: 1 / 1 / 2 / -1;
+      align-self: end;
+      justify-self: end;
+      margin: var(--s-1);
+    }
+
+    .bin-player .preview-transport {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
+    .bin-player .preview-play {
+      inline-size: var(--player-row-h);
+      min-block-size: var(--player-row-h);
+      block-size: var(--player-row-h);
+    }
+
+    .bin-player .cut-bar {
+      block-size: var(--player-row-h);
+    }
+
+    .bin-player .preview-actions .btn-compact:not(.preview-original) {
+      grid-row: 3;
+      min-block-size: var(--player-row-h);
+    }
+
+    .bin-player .preview-skip {
+      grid-column: 1;
+    }
+
+    .bin-player .preview-set[data-field='start'] {
+      grid-column: 2;
+    }
+
+    .bin-player .preview-set[data-field='end'] {
+      grid-column: 3;
+    }
+
+    .bin-player .preview-original {
+      min-block-size: var(--player-row-h);
+    }
   }
 }
