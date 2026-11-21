@@ -3826,16 +3826,11 @@ export function EventEditor({
           )}
 
           {detail !== null && (
-            // The Clips help and the marked clips' actions, and, once any is marked, how many and
-            // Clear marks. Off the bin's side pane that row's slot keeps its height either way;
-            // in it, the row exists only while a clip is marked (workspace.css).
-            <div
-              ref={placeMarkLine}
-              className="mark-line"
-              data-marked={marks.size > 0}
-              tabIndex={-1}
-            >
+            // How clips are marked, and, once any is, how many and Clear marks. Its slot keeps
+            // its height and room either way, so the first mark moves no row.
+            <div ref={placeMarkLine} className="mark-line" tabIndex={-1}>
               <div className="mark-head">
+                <HelpToggle help={clipsHelp} section="Clips" />
                 <span className="mark-line-slot">
                   <span className="mark-count" hidden={marks.size === 0}>
                     {countWords(marks.size)}
@@ -3851,8 +3846,18 @@ export function EventEditor({
                   </button>
                 </span>
               </div>
+              <HelpPanel help={clipsHelp}>
+                {clipsHelpLines({
+                  several: listed.length > 1,
+                  hasIgnored,
+                  hasMissing,
+                  ownChapter: listed.some((chapter) => chapter.name === ''),
+                  hasNewClip: inWorkspace && newClips.size > 0,
+                }).map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </HelpPanel>
               <div className="mark-actions">
-                <HelpToggle help={clipsHelp} section="Clips" />
                 <span className="mark-rotate" role="group" aria-label="Marked clips">
                   <button
                     type="button"
@@ -3915,22 +3920,11 @@ export function EventEditor({
                       onClick={onMovePressed}
                     >
                       <Icon name="arrow-right" />
-                      <span className="mark-move-word">Move</span>
+                      Move
                     </button>
                   </span>
                 )}
               </div>
-              <HelpPanel help={clipsHelp}>
-                {clipsHelpLines({
-                  several: listed.length > 1,
-                  hasIgnored,
-                  hasMissing,
-                  ownChapter: listed.some((chapter) => chapter.name === ''),
-                  hasNewClip: inWorkspace && newClips.size > 0,
-                }).map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </HelpPanel>
               {listedKeys.length > 1 && (
                 <p id={moveReasonId} className={moveReasonShown ? 'mark-move-why' : 'visually-hidden'}>
                   {moveWhyWords}
