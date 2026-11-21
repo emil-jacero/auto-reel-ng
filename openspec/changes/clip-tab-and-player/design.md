@@ -90,11 +90,26 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
   (`focusFacts.inPreview`), open or closed. So Space on its Play presses Play even after a pointer press on a row's
   frame, and the arrows on its playhead stay the playhead's.
 
-### D3. Hide player is remembered (`edit/binPlayerPref.ts`)
-- **Storage.** `auto-reel:bin-player` = `hidden` in `localStorage`, absent meaning shown. Every access is in
-  try/catch, and when the browser keeps nothing it falls back to shown.
-- **Sharing.** A small module store read through `useSyncExternalStore`, the pattern `editor-shortcuts` D5 uses for its
-  switch.
+### D3. The player's state: a choice, or the window's height (`edit/binPlayerPref.ts`)
+- **Three states.** The operator's choice is none, shown or hidden (`PlayerChoice`). `auto-reel:bin-player` in
+  `localStorage` holds `shown` or `hidden`; absent, or any other value, is no choice. Show player, Hide player and a
+  row's Watch (D7) each write an explicit choice, which then always wins, also across visits and whatever the window.
+- **The height rule (no choice).** The player is shown unless the window is short: `(width >= 960px) and (not
+  (pointer: coarse)) and (height < 70.125rem)` (`SHORT_WINDOW_QUERY`), so it starts hidden in a window shorter than
+  70.125rem. A stacked page (under 960) and a coarse pointer are not that layout, and the page scrolls there, so they
+  start shown as before. The rule follows a window that is resized, through the media query's `change` event, only
+  while there is no choice; a made choice ignores it.
+- **H, measured.** The main spec's guarantee ("Clip rows visible at the target window") is 3 whole played rows at 1280×720
+  and all 4 at 1440×900 on `2024-08-20 - Två kapitel - Tjörn`, in the default state. With the 197 px player shown, the
+  bin's last played row ends 696 px from the window's top at 1440 wide, and the bin's pane ends at 693 px in a window
+  1118 tall and at 696 px in one 1122 tall (it grows about 0.62 px per px of window), so 4 whole rows fit from 1122 px
+  and 3 up to 1121. Measured in Firefox 159 and Chrome 158 at 1 px steps, 1440 wide, fine pointer, identical in both.
+  H is therefore 1122 CSS pixels, 70.125rem at a 16 px root, in a rem query so that it follows the text size the page
+  is set to. At 1280×720 and 1440×900, well under H, the default state is hidden and shows 3 and 4 whole rows.
+- **Storage.** Every access is in try/catch; a storage that throws or is absent gives no choice, so the height rule
+  decides, and a choice made lasts for the page visit only. A browser without `matchMedia` counts as not short.
+- **Sharing.** A small module store for the choice and a media query list for the window, both read through
+  `useSyncExternalStore`, the pattern `editor-shortcuts` D5 uses for its switch.
 
 ### D4. Set From and Set To target the shown clip's panel
 - **Writing.** `ClipPreview`'s `onSet(field, ms)` writes through `CutPanels.setTyped(identity, field, text)`, which
@@ -191,7 +206,8 @@ playhead and the proxies' facts.
   1 whole played row at 1280×720 and 1 to 2 at 1440×900 (2 where the event has one chapter; `2024-08-20 - Två kapitel`
   has two headings), against 3 and 4 to 5 with the player hidden. The operator's targets of 2 and 4 are out of reach
   for a player near 200 px: 2 rows with their headings need the player under about 95 px, or 131 px for one chapter.
-  Hide player gives the room back, and the choice is remembered. In a window under about 46rem tall the bin's
+  Hide player gives the room back, so the player starts hidden in a window shorter than 70.125rem (D3) and the
+  guarantee holds in the default state, until the operator shows it. In a window under about 46rem tall the bin's
   scroll padding goes, so that a row selected on the track still sits under its chapter heading (the box then holds
   192 of its 194 px).
 - [Two routes to the same edit (row buttons and Clip tab) for one change] → They dispatch the same actions and use the
