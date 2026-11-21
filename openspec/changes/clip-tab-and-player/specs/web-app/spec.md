@@ -777,7 +777,9 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 - **In the workspace's clip bin from 960 CSS pixels wide.** The side pane is narrow (240 to 320 CSS pixels), so there, with a fine pointer, the toolbar SHALL keep exactly the two rows above and SHALL NOT wrap further. Rotate marked left and right SHALL show an icon only and offer their names as tooltips; the label "Move marked to…" SHALL name the group without being shown; the Clips help toggle SHALL show its icon alone, 32 CSS pixels square, with its name and its tooltip "Help: Clips"; Show player, while the player is hidden, SHALL show its icon alone beside it, 32 CSS pixels square, with its name ("Show player", or "Show player, <name>" when a clip is shown) and the tooltip "Show player", and in a bin narrower than 19rem (304 CSS pixels) Clear marks SHALL then show its icon alone, with its name and the tooltip "Clear marks", so that the first row holds Show player, the count and Clear marks without wrapping; the picker SHALL fill the second row between the Rotate buttons and Move. The toolbar SHALL be at most 88 CSS pixels tall, SHALL stay at the top of the bin while the bin scrolls, and keep its height whether or not a clip is marked, and whether or not the player is hidden. With a coarse pointer the 44 CSS pixel targets stand: the toolbar keeps the icon-only Rotate buttons, but the Move group wraps to a row of its own when the picker would be left under 7rem wide, so that the chosen chapter can always be read, and the toolbar scrolls with the bin rather than staying at its top.
 - **Narrow windows.** Outside the side-pane bin (the stacked workspace below 960 CSS pixels, and everywhere off the workspace), where the toolbar does not fit a row, it SHALL wrap by whole groups: the Move group goes on a row of its own with the label above, the picker filling the
   row beside Move; Rotate marked left and right share a row where they fit and otherwise take a row each at the same width. Every wrapped row SHALL keep the one height and the
-  one axis, and nothing SHALL scroll horizontally at 320 CSS pixels.
+  one axis, and nothing SHALL scroll horizontally at 320 CSS pixels. While the bin's player is hidden, on a window narrower than 40rem (640 CSS pixels), Show player and Clear marks SHALL
+  show their icons alone (with their names and the tooltips "Show player" and "Clear marks"), so that the first row holds the help, Show player, the count and Clear marks at 320 CSS
+  pixels and the first mark moves no row.
 - The names, descriptions, `aria-disabled` states and reasons of the controls ("Edit mode moves the marked clips to a chapter") are unchanged.
 
 #### Scenario: Controls in a row share a height and an axis
@@ -805,6 +807,10 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 - **THEN**
   - the toolbar's first row holds the Clips help toggle and Show player, named "Show player, s1710002.mp4", and after the mark "1 clip marked" and Clear marks; the player has no bar of its own
   - the toolbar was 88 CSS pixels tall before and after the mark, no clip row moved when the clip was marked, and no control of the first row wrapped, also in a bin 240 CSS pixels wide, where Clear marks shows its icon alone
+
+#### Scenario: The stacked page's toolbar with the player hidden
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 390×800 window and in a 320×800 window, with a fine pointer and with a coarse pointer, and the bin's player is hidden, and the operator marks `Kvällen/s1710002.mp4`
+- **THEN** the toolbar was as tall before the mark as after it, no control of the toolbar moved (only the count and Clear marks appeared in the first row), Show player and Clear marks show icons alone, and the page does not scroll horizontally
 
 #### Scenario: The bin's toolbar with a coarse pointer
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1024×768 window with a coarse pointer

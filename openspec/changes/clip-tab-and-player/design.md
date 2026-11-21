@@ -80,7 +80,10 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
   change ("The marks line is one aligned unit"). The button is named `Show player, <name>` for the shown clip
   (`Show player` with none). In the workspace's bin it is an icon alone, 32 px square, like the help toggle; and
   while hidden, a bin narrower than 19rem (a container query on `.ws-binbox`) shows Clear marks as its icon alone,
-  because the help, Show player, the count and Clear marks would not fit a 240 px pane's row. Hide player leaves
+  because the help, Show player, the count and Clear marks would not fit a 240 px pane's row. On the stacked page the same
+  holds below 40rem (a media query in `edit.css`, both pointers): Show player and Clear marks are icons alone while
+  hidden, because 78 + 104 + 175 px of words plus gaps is more than the 296 px a 320 px window leaves, and the first
+  mark wrapped the count and moved every row by 48 px. Hide player leaves
   focus on Show player; Show player leaves it on Hide player; a row's Watch shows the player
   and focuses Play.
 - **Workspace keys.** The whole player region counts as "inside a clip preview" for `editor-shortcuts`' rules
