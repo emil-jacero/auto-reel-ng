@@ -26,3 +26,23 @@ describe('binPlayer.css', () => {
     assert.match(coarse?.[1] ?? '', /row-gap:\s*var\(--s-4\)/)
   })
 })
+
+describe('the bin toolbar with the player hidden (workspace.css)', () => {
+  const ws = readFileSync(new URL('workspace/workspace.css', import.meta.url), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  )
+
+  it('Clear marks gives way to its icon in a pane narrower than 19rem, only while hidden', () => {
+    const at = ws.indexOf('@container (width < 19rem)')
+    assert.notEqual(at, -1, 'a container query for the narrow pane')
+    const query = ws.slice(at, at + 900)
+    assert.match(query, /\.mark-line\[data-player='hidden'\] \.mark-clear-icon/)
+    assert.match(query, /\.mark-line\[data-player='hidden'\] \.mark-clear-words/)
+  })
+
+  it('the bin column is the container the query asks', () => {
+    const binbox = /\.ws-binbox\s*\{([^}]*)\}/.exec(ws)
+    assert.match(binbox?.[1] ?? '', /container-type:\s*inline-size/)
+  })
+})

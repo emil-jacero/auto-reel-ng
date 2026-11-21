@@ -43,23 +43,14 @@
     }
   }
 
-  .bin-player-show,
   .bin-player-hide {
     flex: none;
   }
 
-  /* Hidden, in the 240 px bin, the clip's name outranks the heading's word beside it: Show player
-     takes its room and the name would be an ellipsis of a few letters. The word stays for
-     assistive technology (and the dock's own title says what the pane is). */
-  @container (width < 17rem) {
-    .bin-player[data-state='hidden'] .bin-player-title > :first-child:not(:last-child) {
-      position: absolute;
-      inline-size: 1px;
-      block-size: 1px;
-      margin: -1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-    }
+  /* Hidden, the player's Show player sits in the toolbar's first row, beside the Clips help. */
+  .bin-player-show {
+    flex: none;
+    white-space: nowrap;
   }
 
   /* The preview's own head holds the time and Hide player; the heading above names the clip. */
