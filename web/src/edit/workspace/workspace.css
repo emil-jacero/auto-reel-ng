@@ -774,6 +774,13 @@
         )
         var(--s-2);
 
+      /* A short window leaves the scroll box about 194 px under the player: the toolbar, a heading
+         and a 68 px row take 192 of it, so the breathing room goes (the row sits flush under the
+         heading, never behind it). */
+      @media (height < 46rem) {
+        scroll-padding-block: calc(var(--bin-stick-h) + var(--panel-head-h)) 0;
+      }
+
       & > .mark-line {
         --mark-control-h: 2rem;
         --mark-gap: var(--s-2);
