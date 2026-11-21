@@ -63,6 +63,10 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
     archived commit's 22.2 in the same harness, so that figure is not verified; frame-step p90 26 to 31 ms everywhere;
   - Skip cuts in Firefox 159: a frame at the cut's own start slips through in about one play in five, from the frame
     loop in `ClipPreview`, which this change does not touch.
+  - Operator decision (round 4): the player starts hidden in a window shorter than 70.125rem (1122 px) until the
+    operator chooses (design D3). In Firefox 159 and Chrome 158 with fresh storage the default state shows 3 whole
+    rows at 1280×720 and 4 at 1440×900, and the height rule, "Closing gives focus back", "Watching from the row in one
+    press" and the empty and closed player at 1440×1300 pass.
 - [x] 3.2 Record the change:
   - HLD D-28: a "Player" bullet (the preview docks in the bin, shows the selection's last clip, and loads on Play only)
     and the Clip tab built by the editor with the Timeline's track-only part. Amend D-20's one-video note to name the

@@ -2137,12 +2137,15 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     the selection's last clip, or a selected cut's clip, and keeps it while a card, a suggestion or nothing is selected
     (`shownClip`, `edit/binPlayer.ts`, pure). **It loads on Play only:** until then it draws the clip's thumbnail and no
     media request is made, so selecting clips stays free. Play opens the preview, which releases the Timeline's video
-    (D-20, "One video in Edit mode"); moving the Timeline's playhead closes it. **Hide player** collapses it to a bar
-    with the clip's name and Show player, closes an open preview and is kept in `localStorage` (`auto-reel:bin-player`
-    = `hidden`; shown when the browser keeps nothing). Set From and Set To write the shown clip's Cuts panel fields,
+    (D-20, "One video in Edit mode"); moving the Timeline's playhead closes it. **Hide player** removes it
+    (a Show player button takes its place in the bin toolbar's first row) and closes an open preview. Hide, Show and a
+    row's Watch each store an explicit choice in `localStorage` (`auto-reel:bin-player` = `shown` or `hidden`), which
+    always wins. With no choice, the player starts hidden in the side pane's layout when the window is shorter than
+    70.125rem (1122 px, the height at which the four rows of the Tjörn fixture fit whole under it) and shown
+    otherwise, following a resize only while there is no choice. Set From and Set To write the shown clip's Cuts panel fields,
     shown or hidden, and are offered only for a clip that can be cut. A row's thumbnail ("Watch <name>") selects the
     clip and focuses the player's Play. The whole player counts as a clip preview for the workspace keys. `ClipPreview`
-    is moved, not rewritten. The rows-in-view targets of `compact-bin-tools` are measured with the player hidden.
+    is moved, not rewritten. The rows-in-view targets of `compact-bin-tools` hold in the default state, because the player starts hidden in a short window.
   - **The Clip tab is built by the editor (same change).** The tab was drawn by the Timeline for a clip the track
     draws, so it was empty in Prepare, for an ignored clip and for a missing one, the clips whose edits lived only in the
     bin rows. `EventEditor` now renders it (`edit/ClipInspector.tsx`) for any selected clip or clips: name, chapter and

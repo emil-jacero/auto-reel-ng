@@ -69,8 +69,14 @@ player SHALL have no bar of its own: a **Show player** button SHALL take its pla
 toolbar, beside the Clips help, and SHALL keep that row's height and the place of the count and Clear marks ("The
 marks line is one aligned unit"). Its name SHALL be "Show player", and "Show player, <name>" while a clip is shown,
 <name> as its row names it. Show player SHALL bring the player back with the shown clip, its preview closed.
-The choice SHALL be kept in the browser for later visits, every read and write of it guarded, and SHALL be "shown"
-when the browser keeps nothing.
+Show player, Hide player and the row's Watch SHALL each record an explicit choice, kept in the browser for later
+visits with every read and write of it guarded; an explicit choice SHALL always win, whatever the window. While the
+operator has made no choice, in the bin's side pane (a window 960 pixels wide or more, with no coarse pointer) the
+player SHALL start hidden in a window shorter than 70.125rem (1122 CSS pixels at a 16 pixel root: the height at
+which the four played rows of `2024-08-20 - Två kapitel - Tjörn` fit whole with the player shown) and shown in a
+window that height or taller; a stacked page or a coarse pointer starts shown. With no choice, the player SHALL
+follow the window across that height as it is resized, and a resize SHALL change nothing once there is a choice.
+When the browser keeps nothing, there is no stored choice, so the height rule decides.
 
 **What it plays.** The preview SHALL play the clip's preview copy when the clip has a ready one, and the clip's
 own file, the original, otherwise, as "A clip's preview plays its preview copy when one is ready" requires. The
@@ -238,6 +244,21 @@ Hide player when the control that held it went:
 - **THEN** the preview closes, the player is gone from the bin, Show player is in the toolbar's first row, and keyboard focus is on it
 - **WHEN** the operator leaves Edit mode, enters it again and selects a clip
 - **THEN** the player is still collapsed, and Show player brings it back with keyboard focus on Hide player
+
+#### Scenario: A short window starts with the player hidden
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer, with
+  nothing stored for the player
+- **THEN** the player is hidden, Show player is in the toolbar's first row, and the bin shows at least 3 whole rows of the clips its chapters play ("Clip rows visible at the target window")
+- **WHEN** the operator presses Show player
+- **THEN** the player is shown, and it is still shown when Edit mode is opened again in the same window, and in a window as short as 700 pixels
+- **WHEN** the operator presses Hide player and opens Edit mode in a 1440×1300 window
+- **THEN** the player is still hidden, because the choice wins
+- **WHEN** Edit mode opens in a 1440×1300 window with nothing stored for the player
+- **THEN** the player is shown, with its empty placeholder or the clip's closed preview
+- **WHEN** nothing is stored and the window is resized from 1440×1300 to 1440×900 and back
+- **THEN** the player is hidden at 1440×900 and shown again at 1440×1300, and nothing is stored
+- **WHEN** nothing is stored and the window is 900 pixels wide and 700 tall (a stacked page)
+- **THEN** the player is shown
 
 #### Scenario: Watching from the row in one press
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, with every Cuts panel hidden, the operator tabs
@@ -720,7 +741,7 @@ From 960 CSS pixels wide the bin SHALL be a side pane as wide as 22% of the wind
 - **THEN** `s1710002.mp4` is first in its chapter, the move is announced, and the Timeline draws it first
 
 #### Scenario: Clip rows visible at the target window
-- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, with a fine pointer, no clip marked and the bin's player hidden
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn`, with a fine pointer and no clip marked
 - **THEN** in a 1280×720 window the bin shows, below its toolbar and without scrolling, at least 3 whole rows of the clips its chapters play, and in a 1440×900 window all 4 of them; the ignored `s1710004.mp4` is listed after them
 
 #### Scenario: A new clip in the bin
