@@ -330,6 +330,35 @@
       justify-content: flex-start;
     }
 
+    /* Hidden, Show player and Clear marks give way to their icons: the help, Show player, the count
+       and Clear marks in words would not fit a row of 296 px (a 320 px window), so the first mark
+       would wrap the count and move every row below. Their names stay for assistive technology and
+       as tooltips. */
+    .mark-line[data-player='hidden'] {
+      & .bin-player-show,
+      & .mark-line-slot .btn {
+        position: relative;
+        inline-size: var(--mark-control-h);
+        min-inline-size: var(--mark-control-h);
+        padding-inline: 0;
+        justify-content: center;
+      }
+
+      & .bin-player-show .mark-words,
+      & .mark-clear-words {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      & .mark-clear-icon {
+        display: inline-flex;
+      }
+    }
+
     .mark-actions {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
