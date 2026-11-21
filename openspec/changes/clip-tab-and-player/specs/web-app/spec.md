@@ -83,8 +83,11 @@ be shown whole, turned as a player shows it. Unless a scenario of this requireme
 preview copy, it SHALL be read for a clip that has none.
 
 **Nothing loads before it is asked for.** The page SHALL NOT request a clip's media or its preview copy, and
-SHALL NOT create a video element for either, before the operator opens that clip's preview. Selecting a clip, and
-showing it in the player, SHALL request only its thumbnail. This SHALL hold for any number of clips,
+SHALL NOT create a video element for either, before the operator opens that clip's preview. The one exception is the
+Timeline's own video ("The playhead scrubs one video"), which the track brings and which loads the preview copy of the
+clip its playhead is in; it is not a clip's preview and no selection moves it. Selecting a clip, and
+showing it in the player, SHALL request only its thumbnail, beyond what the Timeline's video had requested before the
+selection, and SHALL NOT create a clip-preview video element. This SHALL hold for any number of clips,
 for Cuts panels that are shown, and on entering, scrolling and leaving Edit mode. Closing a preview SHALL
 stop its playback and any loading of its file, and show the clip's thumbnail again.
 
@@ -190,14 +193,22 @@ Hide player when the control that held it went:
 - Reset SHALL close the preview. Leaving Edit mode SHALL close it.
 
 #### Scenario: Nothing loads until a preview is opened
-- **WHEN** the operator opens Edit mode on `2024-09-15 - Stor dag`, whose root chapter plays 400 clips, scrolls
-  to its end, and shows the Cuts panels of `c0001.mp4`, `c0200.mp4` and `c0400.mp4`
-- **THEN** the page holds no video element and has made no media request
+- **WHEN** the operator opens Edit mode on `2024-09-15 - Stor dag`, whose root chapter plays 400 clips, each with a
+  ready preview copy so that the track draws them, scrolls to its end, and shows the Cuts panels of `c0001.mp4`,
+  `c0200.mp4` and `c0400.mp4`
+- **THEN** the page holds no clip-preview video element, its one video is the Timeline's, and the only requests made
+  for clip media are the Timeline's own, for the clip its playhead is in (the copy's first byte, then the copy);
+  none names `c0200.mp4` or `c0400.mp4`
 - **WHEN** the operator selects `c0001.mp4`, `c0200.mp4` and then `c0400.mp4` on the track, one after the other
-- **THEN** the player shows `c0400.mp4`'s thumbnail, the page holds no clip's video element, and the only requests
-  made for those clips are their thumbnails
+- **THEN** the player shows `c0400.mp4`'s thumbnail, the page still holds no clip-preview video element, the
+  Timeline's playhead has not moved, and the only requests made for those clips since the selections began are their
+  thumbnails
 - **WHEN** the operator presses the player's Play
-- **THEN** `c0400.mp4` plays, and every media request names `c0400.mp4` and carries its modification time as `v`
+- **THEN** `c0400.mp4` plays from its preview copy, and every request for clip media made since the selections
+  began names `c0400.mp4`: the copy's first byte at `…/proxy?clip=c0400.mp4` with no `v`, then the copy at
+  `…/proxy?clip=c0400.mp4&v=<tag>`, where `<tag>` is the entity tag (ETag) the first answered; none goes to
+  `…/media`, and none carries a modification time as `v` (the original's address does, in a scenario whose clip has
+  no ready preview copy)
 
 #### Scenario: Playing and seeking from the keyboard
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, using only the keyboard, the operator tabs to the
