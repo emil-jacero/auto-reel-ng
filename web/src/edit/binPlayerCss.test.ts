@@ -27,6 +27,33 @@ describe('binPlayer.css', () => {
   })
 })
 
+describe('binPlayer.css, the compact player (design D2)', () => {
+  const compact = /@media \(width >= 960px\) and \(not \(pointer: coarse\)\)\s*\{([\s\S]*)\n  \}\n\}\s*$/.exec(css)
+
+  it('is for the side pane with a fine pointer only, so a coarse pointer keeps its larger rows', () => {
+    assert.notEqual(compact, null, 'a compact media block')
+  })
+
+  it('caps the picture box at 136 px and keeps the picture whole in it', () => {
+    const stage = /\.bin-player \.preview-stage\s*\{([^}]*)\}/.exec(compact?.[1] ?? '')
+    assert.match(stage?.[1] ?? '', /max-block-size:\s*8\.5rem/)
+    assert.match(stage?.[1] ?? '', /inline-size:\s*100%/)
+  })
+
+  it('lays Skip cuts, Set From and Set To in one row and Play original on the picture', () => {
+    const block = compact?.[1] ?? ''
+    assert.match(block, /\.preview-actions\s*\{\s*display:\s*contents/)
+    assert.match(block, /\.preview-original\s*\{[^}]*grid-area:\s*1 \/ 1 \/ 2 \/ -1/)
+    assert.match(block, /\.preview-skip\s*\{\s*grid-column:\s*1/)
+  })
+})
+
+describe('binPlayer.css, the empty player', () => {
+  it('its rows below the picture hold their space without showing', () => {
+    assert.match(css, /\.preview-ghost\s*\{\s*visibility:\s*hidden/)
+  })
+})
+
 describe('the bin toolbar with the player hidden (workspace.css)', () => {
   const ws = readFileSync(new URL('workspace/workspace.css', import.meta.url), 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
