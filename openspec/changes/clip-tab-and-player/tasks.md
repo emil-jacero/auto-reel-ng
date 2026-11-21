@@ -51,22 +51,39 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - take screenshots of the player in light and dark at 1440, 1100 and 390 px, shown and hidden, and look at them for
     clipping;
   - check that selecting 50 clips one after the other makes no media request and creates no clip video.
-  Status (2026-11-21, left open): both deltas' scenarios pass or are partial for reasons outside the page in Firefox
-  159, Chrome 158 and Firefox 132, except the 400-clip gates, which are the main specs' figures and fail or are not
-  verified the same way on `origin/main` 1ae3c68b:
-  - first edit over 400 clips (at most 50 ms over the next one): Chrome 158 diff 222 ms against `origin/main`'s 203 ms,
-    Firefox 159 71 ms against 66 ms (interleaved, five fresh loads each);
-  - zoom-slider drag (at most 2 % of frames over 25 ms; production builds, 4x in Chrome, the archived procedure, which
-    reproduces 0.33 % on the archived commit 7538e62c): Chrome 158 3.21 % on the branch against 3.53 % on
-    `origin/main`; Firefox 159 and 132 0 %;
-  - scrub (at least 30 frames per second): Chrome 158 43.9 fps; Firefox 159 27.6 fps against `origin/main`'s 27.5 and the
-    archived commit's 22.2 in the same harness, so that figure is not verified; frame-step p90 26 to 31 ms everywhere;
-  - Skip cuts in Firefox 159: a frame at the cut's own start slips through in about one play in five, from the frame
-    loop in `ClipPreview`, which this change does not touch.
+  Status (2026-11-21, round 4, left open on one item):
+  - Full matrix in Firefox 159 and Chrome 158: 0 FAIL in both (Firefox 102 PASS, 6 PART; Chrome 100 PASS, 2 PASS\*, 5 PART,
+    1 PREX). The PART and PREX rows are outside the page (touch emulated, no HEVC in Firefox, a Sony clip's sound in
+    Firefox, no real touch screen) or are the accepted gates below. Firefox 132 was not run again this round. Since the
+    player now starts hidden in a short window (design D3), the harness stores the choice `shown` before the older
+    scenarios; the height-rule scenarios (H1a to H1e: default state, the rule, empty and closed player, focus, Watch) run
+    without it and pass in both browsers. Light and dark screenshots at 1440, 1100 and 390 px, shown (empty, closed,
+    open) and hidden, were read in both browsers: nothing is clipped.
+  - Rows (default state, player hidden, fine pointer): 3 whole rows at 1280×720 and 4 at 1440×900. With the player
+    shown: 1 whole row at either size when a clip is shown (design D3).
+  - Selecting 50 clips one after the other makes no media request and creates no clip video (M3, M3b), both browsers.
+  - Accepted as pre-existing and out of scope (operator decision 2026-11-21): the main specs' 400-clip speed gates that
+    fail the same way on `origin/main` 1ae3c68b:
+    - zoom-slider drag (at most 2 % of frames over 25 ms, Chrome 4x production build): branch 3.21 % against
+      `origin/main` 3.53 %; the archived commit 7538e62c reproduces 0.33 %, so `main` regressed after it (follow-up in
+      `docs/editor-workspace.md`);
+    - first edit over 400 clips (at most 50 ms over the second): Chrome 222 ms against 203 ms on `origin/main` (227 ms in
+      the round-4 matrix), Firefox 71 ms against 66 ms (81 ms in the round-4 matrix); the branch adds about 15 to 40 ms to
+      the first Move;
+    - scrub (at least 30 frames per second): Firefox 159 is UNVERIFIED because the harness reads 22 fps on the archived
+      commit (branch 27.6, `origin/main` 27.5); Chrome 43.9 fps.
+  - Open, C5 (a cut that ends between two frames is jumped over once) in Firefox 159: a frame at the cut's own start
+    slips through in some plays. Interleaved A/B, 5 plays a round, branch :5181 against `origin/main` :5182, Firefox 159:
+    branch 116 of 130 plays clean (89 %), `origin/main` 128 of 130 (98 %), Fisher exact p = 0.003 (round-4 run alone:
+    37 of 40 against 40 of 40). Chrome 158: 30 of 30 on both. So the slip exists on `origin/main` but is about seven
+    times as frequent on the branch; an earlier summary of 20 of 20 against 19 of 20 is not what the logs add up to. The
+    single-play C5 in the full matrix passes in both browsers. The frame loop in `ClipPreview` is not changed by this
+    change (its Skip state is held by the player and the preview remounts when the player opens or closes), so the cause
+    is probably the player's box or the remount, not yet found. Logs (harness scratchpad): `logs/c5_ab_firefox.txt`,
+    `logs/c5_ab_firefox2.txt` (branch 79 of 90, `origin/main` 88 of 90), `logs/c5_ab_chrome.txt`, and
+    `logs/r4/c5_ab_firefox.txt`.
   - Operator decision (round 4): the player starts hidden in a window shorter than 70.125rem (1122 px) until the
-    operator chooses (design D3). In Firefox 159 and Chrome 158 with fresh storage the default state shows 3 whole
-    rows at 1280×720 and 4 at 1440×900, and the height rule, "Closing gives focus back", "Watching from the row in one
-    press" and the empty and closed player at 1440×1300 pass.
+    operator chooses (design D3).
 - [x] 3.2 Record the change:
   - HLD D-28: a "Player" bullet (the preview docks in the bin, shows the selection's last clip, and loads on Play only)
     and the Clip tab built by the editor with the Timeline's track-only part. Amend D-20's one-video note to name the

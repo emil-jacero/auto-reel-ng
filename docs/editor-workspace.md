@@ -142,3 +142,7 @@ in the browser from the event's resolved cards.
 ## Open questions
 
 - ~~Is Split worth a `reel.yaml` change, or is "cut a span" (already possible) enough?~~ Settled 2026-11-18: `clip-split` was dropped.
+- Follow-up (2026-11-21): bisect `main` between `7538e62c` (the archived commit, where the 400-clip zoom-slider drag in Chrome
+  measures 0.33 % of frames over 25 ms) and `1ae3c68b` (3.53 %; the main spec's gate is 2 %). Something merged in between regressed
+  it; `clip-tab-and-player` is not the cause (3.21 % on its branch). The first-edit gate and Firefox's scrub figure are in the same
+  state and are not part of this item (see task 3.1's status note in `openspec/changes/clip-tab-and-player/tasks.md`).
