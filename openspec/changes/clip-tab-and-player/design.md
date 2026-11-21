@@ -63,7 +63,9 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
 - **Height budget (fine pointer, side pane).** About 200 px in all, with the preview closed, open or with a ready
   copy: 1px border, 4px padding above and below, the picture's box (at most 136 px, as wide as the pane, 16:9 below
   the cap, the picture whole inside it), a 2px gap, Play with the playhead (24px), a 2px gap, and Skip cuts, Set From
-  and Set To (24px): 197 px measured at a 282 px pane (1280 wide), 194 px at 240. What else the preview says is laid
+  and Set To (24px): 197 px measured at a 282 px pane (1280 wide), 186 px at the 240 px pane (960 wide), where the grid is 223 px
+  wide and the box 16:9 at 125 px: the third row's gaps and button sides are tight (4 px and 6 px) so that it fits
+  223 px with 10 px to spare. What else the preview says is laid
   on the picture's box, in its one grid cell: the readout and Hide player along its top (light badges, as the status
   badge), the legend under the readout, and the source line and Play original along its foot, so a ready copy adds no
   row. The clip's name is the region's heading for assistive technology only; the selected row and the Clip tab name
