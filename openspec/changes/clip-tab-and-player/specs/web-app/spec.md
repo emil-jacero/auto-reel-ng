@@ -197,7 +197,8 @@ Hide player when the control that held it went:
   ready preview copy so that the track draws them, scrolls to its end, and shows the Cuts panels of `c0001.mp4`,
   `c0200.mp4` and `c0400.mp4`
 - **THEN** the page holds no clip-preview video element, its one video is the Timeline's, and the only requests made
-  for clip media are the Timeline's own, for the clip its playhead is in (the copy's first byte, then the copy);
+  for clip media are the Timeline's own, for the clip its playhead is in (the copy, at `…/proxy?clip=c0001.mp4&v=<the copy's version the detail names>`, with no
+  first-byte request of its own);
   none names `c0200.mp4` or `c0400.mp4`
 - **WHEN** the operator selects `c0001.mp4`, `c0200.mp4` and then `c0400.mp4` on the track, one after the other
 - **THEN** the player shows `c0400.mp4`'s thumbnail, the page still holds no clip-preview video element, the
