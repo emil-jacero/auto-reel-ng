@@ -50,8 +50,11 @@ preview of one clip, the **shown clip**, where <name> is the clip's name as its 
 the last clip of the selection, or the clip of a selected cut ("One selection in the workspace", `event-timeline`),
 when that clip is on disk. While a title card, a suggestion or nothing is selected, the player SHALL keep the clip it
 showed. Before a clip on disk has been selected, and when the shown clip is no longer listed or no longer on disk, the
-player SHALL say "Select a clip to watch it." and offer no control but Hide player. The player SHALL name the shown
-clip in its heading. The clip's preview is **open** while the player holds a video for it: pressing the player's Play
+player SHALL say "Select a clip to watch it." and offer no control but Hide player: it SHALL be an inert placeholder
+as tall as the player with a clip shown, with no focusable playhead or button, no "Nothing is loaded" line and no
+other control in the accessibility tree, so that showing the first clip changes no row's size or place. The player
+SHALL name the shown clip in its heading. In the bin's side pane with a fine pointer that heading MAY be for
+assistive technology alone, because the selected row and the Clip tab name the clip on screen. The clip's preview is **open** while the player holds a video for it: pressing the player's Play
 SHALL open it, and nothing else SHALL. A new shown clip SHALL close the preview of the clip before it.
 
 **From the row.** In Edit mode, the thumbnail of every clip that offers a Cuts panel SHALL be a button named "Watch
@@ -127,11 +130,19 @@ The slider's value text stays in the Cuts panel's format, above.
 - The picture SHALL be shown whole in a box of fixed 16:9 proportions, as wide as the bin allows up to 640
   CSS pixels and never taller than 360. The box SHALL have that size before the clip's file is read, so that
   nothing on the page moves when it is.
+- In the bin's side pane (a window 960 pixels wide or more) with a fine pointer, the player SHALL stay within a
+  height budget of about 200 CSS pixels with its preview closed or open, and also with a preview copy ready (so that
+  "Play original" moves nothing): the picture's box is then at most 136 tall, as wide as the pane, and the picture
+  sits whole inside it, with bands at its sides when the box is wider than 16:9. Play with the playhead make one
+  row, and Skip cuts, Set From and Set To the next. The readout and Hide player lie along the top of the picture's
+  box, and the source line and "Play original" along its foot. A coarse pointer or a stacked page keeps its larger
+  rows and boxes.
 - In a window 320 pixels wide or more, the player SHALL NOT make the page scroll horizontally.
 - When the primary pointer is coarse, each of its controls SHALL take a tap anywhere in an area of at least
   44 × 44 CSS pixels around it, reaching no other control. The playhead SHALL take a tap across its whole
   width in an area at least 44 pixels tall.
-- It SHALL follow the page's color scheme in both schemes. No state of it SHALL be shown by color alone.
+- It SHALL follow the page's color scheme in both schemes. No state of it SHALL be shown by color alone: a control
+  that says it is unavailable (Set From, Set To, the playhead) SHALL also have a dashed edge.
 - It SHALL animate nothing. The playhead moves only with playback or a seek.
 
 **What the browser cannot do, by cause.** Each of these SHALL be shown in the player as a note, never as an
@@ -484,7 +495,8 @@ duration, or a detail that says nothing of a copy. The choice SHALL be made when
 detail alone. For a clip whose state is not ready the page SHALL NOT request a preview copy, and SHALL NOT ask for
 one to be built. The preview SHALL NOT change file by itself, also not after a failure.
 
-**What it shows of that.** The preview SHALL say in words, under the picture, which file plays: "Playing the
+**What it shows of that.** The preview SHALL say in words, under the picture, which file plays (in the bin's side
+pane with a fine pointer, on the foot of the picture's box, where "Play original" also sits): "Playing the
 preview copy" or "Playing the original". When the original plays because the state is stale, because it failed,
 or because a ready state had no usable duration, the words SHALL give that reason ("its preview copy is out of
 date", "its preview copy could not be built", "its preview copy has no usable length"). The words SHALL be

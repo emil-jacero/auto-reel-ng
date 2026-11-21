@@ -54,9 +54,24 @@ export function shownClip(sel: Selection, was: string | null, listed: ReadonlySe
 - **Close becomes Hide player.** `ClipPreview`'s Close is replaced by Hide player. Escape in the player calls
   `previews.close(id)`, keeps focus on Play, and stops propagation, so `useSelection` does not clear the selection.
 - **A new shown clip** calls `previews.close(was)` first. That is the existing one-at-a-time rule.
-- **Empty.** With no shown clip the player keeps the closed preview's height: the same 16:9 box holding "Select a clip
-  to watch it.", and the same rows (time, Play and playhead, source line, Skip cuts, Set From, Set To), every control
-  `aria-disabled`, so the first selection changes no bin row's size or place. The hidden state is unchanged.
+- **Empty.** With no shown clip the player is an inert placeholder of the closed player's height: a dashed box over
+  the space of the closed player's picture and rows, holding "Select a clip to watch it.", with Hide player as its
+  only control. The rows below the picture are the closed preview's own markup with `visibility: hidden`, `aria-hidden`
+  and `inert`: they keep the closed player's size by construction (same classes, same grid) and are neither shown,
+  focusable nor in the accessibility tree. So the first selection changes no bin row's size or place, and the empty
+  player has exactly one focusable control. The hidden state is unchanged.
+- **Height budget (fine pointer, side pane).** About 200 px in all, with the preview closed, open or with a ready
+  copy: 1px border, 4px padding above and below, the picture's box (at most 136 px, as wide as the pane, 16:9 below
+  the cap, the picture whole inside it), a 2px gap, Play with the playhead (24px), a 2px gap, and Skip cuts, Set From
+  and Set To (24px): 197 px measured at a 282 px pane (1280 wide), 194 px at 240. What else the preview says is laid
+  on the picture's box, in its one grid cell: the readout and Hide player along its top (light badges, as the status
+  badge), the legend under the readout, and the source line and Play original along its foot, so a ready copy adds no
+  row. The clip's name is the region's heading for assistive technology only; the selected row and the Clip tab name
+  it on screen. A coarse pointer or a stacked page (under 960 px) keeps the larger rows (`@media (width >= 960px) and
+  (not (pointer: coarse))` gates the compact layout; a headless browser reports no fine pointer, so "not coarse" is
+  the test the workspace already uses).
+- **Unavailable looks unavailable without color.** Set From, Set To and the playhead, when they say they are
+  unavailable, have a dashed edge in addition to the dimmed color (`preview.css`).
 - **Hidden.** The player renders nothing of its own and closes any open preview: no bar, no heading. Its Show player
   button goes through a portal into a slot in the first row of the marks toolbar (`EventEditor`'s `.mark-lead`), next
   to the Clips help, so the toolbar's two fixed rows, its 88 px and the place of the count and Clear marks do not
@@ -160,9 +175,15 @@ playhead and the proxies' facts.
 
 ## Risks / Trade-offs
 
-- [At 1280×720 the bin is about 390 px tall, and the player with its controls takes about 230 px of it] → Hide player
-  gives the room back, and the choice is remembered. The rows-in-view target is stated with the player hidden. Task
-  3.1 measures and reports the rows in view with the player shown at 1280×720 and 1440×900.
+- [At 1280×720 the bin is 391 px tall, and the player took 323 px of it with its controls in rows] → The player is
+  compact in the side pane (D2): 197 px measured, in both Firefox 132 and Chrome. With it shown the bin's scroll box is
+  194 px at 1280×720 and 312 px at 1440×900, and it holds the 88 px toolbar, a 36 px chapter heading and 68 px rows:
+  1 whole played row at 1280×720 and 1 to 2 at 1440×900 (2 where the event has one chapter; `2024-08-20 - Två kapitel`
+  has two headings), against 3 and 4 to 5 with the player hidden. The operator's targets of 2 and 4 are out of reach
+  for a player near 200 px: 2 rows with their headings need the player under about 95 px, or 131 px for one chapter.
+  Hide player gives the room back, and the choice is remembered. In a window under about 46rem tall the bin's
+  scroll padding goes, so that a row selected on the track still sits under its chapter heading (the box then holds
+  192 of its 194 px).
 - [Two routes to the same edit (row buttons and Clip tab) for one change] → They dispatch the same actions and use the
   same words. `plain-clip-bin` removes the row buttons next.
 - [Set From while the panel is hidden is invisible] → The row's Cuts control says "typed", the save bar names the
