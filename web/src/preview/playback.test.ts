@@ -13,6 +13,8 @@ import {
   hidePlayerName,
   offersSkip,
   regionName,
+  skipAt,
+  skipLookahead,
   playheadWords,
   staleAdvice,
   timeCells,
@@ -144,5 +146,39 @@ describe('the bin player’s words', () => {
 
   it('say under a closed picture that nothing is loaded', () => {
     assert.equal(NOT_LOADED, 'Nothing is loaded until you press Play.')
+  })
+})
+
+describe('how far ahead the frame loop looks for a cut', () => {
+  // A 50 fps clip (20 ms frames) whose cut starts at 1000 ms.
+  const spans = [{ from: 1000, to: 2010 }]
+
+  it('looks two frame intervals ahead when callbacks come on every frame', () => {
+    assert.equal(skipLookahead(20, 20, 20), 40)
+    assert.equal(skipLookahead(40, 40, 40), 80)
+  })
+
+  it('looks nowhere while no step is known', () => {
+    assert.equal(skipLookahead(0, Infinity, 0), 0)
+  })
+
+  it('looks a widest step plus one interval ahead when callbacks skip frames', () => {
+    assert.equal(skipLookahead(20, 20, 40), 60)
+  })
+
+  it('counts a stall for at most four intervals', () => {
+    assert.equal(skipLookahead(20, 20, 400), 100)
+  })
+
+  it('seeks at the callback before the cut after an off-cycle callback', () => {
+    // Firefox: every second frame (40 ms), then an extra callback at 940; the next is 1000.
+    const at = (ms: number, step: number, widest: number): unknown =>
+      skipAt(spans, ms, skipLookahead(step, 20, widest), 10_000)
+    assert.equal(at(920, 40, 40), null)
+    assert.deepEqual(at(940, 20, 40), { seek: 2010 })
+  })
+
+  it('still seeks two intervals ahead for a clip with 40 ms frames', () => {
+    assert.deepEqual(skipAt(spans, 920, skipLookahead(40, 40, 40), 10_000), { seek: 2010 })
   })
 })
