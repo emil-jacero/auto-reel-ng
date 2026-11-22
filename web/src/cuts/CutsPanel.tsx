@@ -32,7 +32,6 @@ import {
   restoreRefusalWords,
   restoredWords,
   spanWords,
-  toggleName,
 } from './times'
 import type { CutField, CutRefusal, ListedCut } from './times'
 
@@ -210,6 +209,9 @@ export const CutsPanel = memo(function CutsPanel({
   const focusAfter = useRef<FocusRequest | null>(null)
   const scrollAfter = useRef<HTMLElement | null>(null)
   const fieldId = useId()
+  const summaryId = `${fieldId}-summary`
+  const nameId = `${fieldId}-name`
+  const typedId = `${fieldId}-typed`
   const startId = `${fieldId}-start`
   const endId = `${fieldId}-end`
   const errorId = `${fieldId}-error`
@@ -353,13 +355,26 @@ export const CutsPanel = memo(function CutsPanel({
   const unavailable = locked || undefined
   const typed = hasText(start, end)
   return (
-    <section className="clip-cuts" aria-label={toggleName(cuts, name, typed)}>
-      {/* The cut summary heads the panel; "typed" in words while a time waits to be added. */}
+    <section
+      className="clip-cuts"
+      role="group"
+      aria-labelledby={`${summaryId} ${nameId}${typed ? ` ${typedId}` : ''}`}
+    >
+      {/* The cut summary heads the panel; "typed" in words while a time waits to be added. The
+          group is named by those words and the clip's name, so its name is what the heading
+          shows, in the same order, with the clip said. */}
       <h4 className="cuts-heading" data-cut={keptCuts(cuts).length > 0 || undefined}>
         {SCISSORS}
-        <span className="cuts-summary">{cutSummary(cuts)}</span>
-        {typed && <span className="cuts-typed">typed</span>}
+        <span className="cuts-summary" id={summaryId}>
+          {cutSummary(cuts)}
+        </span>
+        {typed && (
+          <span className="cuts-typed" id={typedId}>
+            typed
+          </span>
+        )}
       </h4>
+      <span className="visually-hidden" id={nameId}>{`of ${name}`}</span>
       <div ref={listRef}>
         {cuts.length === 0 ? (
           <p className="cuts-none">{NO_CUTS}</p>
