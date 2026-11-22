@@ -201,7 +201,7 @@ export function draftClips(
     names.push(chapter.name)
     const order = orders.get(chapter.key) ?? []
     // Named as its list names them: by the name now, from the clips it lists now and the ones
-    // the live read gives the chapter it was read as (`ClipOrderList`'s rule).
+    // the live read gives the chapter it was read as (the bin's rule).
     const read =
       chapter.readName === null
         ? undefined

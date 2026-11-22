@@ -1,5 +1,5 @@
 // The edits of a set of clips (`clip-multi-select` D2): the set travels in the action, not in
-// the editor's marks, so the marks' own actions stay as they are. Pure: `EventEditor`'s reducer
+// the editor's state. Pure: `EventEditor`'s reducer
 // calls `selectionStep` and `selectionLabel`, and the tests drive them without React.
 
 import type { Baseline, ChapterKey, Draft } from './draft.ts'
@@ -10,9 +10,8 @@ import {
   isIgnoredNow,
   listedChapters,
   moveGroup,
-  moveMarkedToEnd,
+  moveToEnd,
 } from './draft.ts'
-import { afterMove } from './marks.ts'
 
 /**
  * The four actions that carry the clips they act on, and `onDisk`: whether a clip is on disk
@@ -38,7 +37,6 @@ export const NOTHING_INCLUDED = 'Nothing included.'
 export type SelectionTarget = {
   baseline: Baseline
   draft: Draft
-  marked: ReadonlySet<string>
   lastMoved: string | null
 }
 
@@ -79,17 +77,16 @@ export function includedBy(
 /**
  * `target` after the edit, or `target` itself when nothing changes. A clip that is not on disk
  * (missing) or that no listed chapter plays (ignored, removed, or unknown) is left out, so a stale
- * set can never move or ignore a clip it should not. The marks change only by `afterMove`: a moved clip is unmarked, as
- * when a marked clip is dragged. An ignored clip stays marked, as `ignore` leaves it today.
+ * set can never move or ignore a clip it should not.
  */
 export function selectionStep<T extends SelectionTarget>(target: T, action: SelectionEdit): T {
   const { draft } = target
   switch (action.type) {
     case 'selection-move': {
-      const result = moveMarkedToEnd(draft, listedKeys(draft), wanted(action), action.to)
+      const result = moveToEnd(draft, listedKeys(draft), wanted(action), action.to)
       return result.draft === draft
         ? target
-        : { ...target, draft: result.draft, lastMoved: null, marked: afterMove(target.marked, result.moved) }
+        : { ...target, draft: result.draft, lastMoved: null }
     }
     case 'selection-drop': {
       const keys = listedKeys(draft)
@@ -100,7 +97,7 @@ export function selectionStep<T extends SelectionTarget>(target: T, action: Sele
       const next = moveGroup(draft, group, action.to, action.gap)
       return next === draft
         ? target
-        : { ...target, draft: next, lastMoved: action.dragged, marked: afterMove(target.marked, group) }
+        : { ...target, draft: next, lastMoved: action.dragged }
     }
     case 'ignore-many': {
       const set = wanted(action)

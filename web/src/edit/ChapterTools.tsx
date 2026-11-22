@@ -37,13 +37,13 @@ export type ChapterToolsModel = {
   deleteRefusal: string | null | undefined
   /** Whether Delete was pressed while refused: its reason shows until the next chapter edit. */
   refusalShown: boolean
-  /** While a save or a move of marked clips is pending: every control is unavailable. */
+  /** While a save or a move of clips is pending: every control is unavailable. */
   locked: boolean
   onMoveChapter: ChapterMoveHandler
   onDelete: ChapterHandler
 }
 
-// Constant elements, as the clip rows' (ClipOrderList).
+// Constant elements, so a re-render of the list builds none.
 const UP = <Icon name="arrow-up" />
 const DOWN = <Icon name="arrow-down" />
 const DELETE = <Icon name="x" />

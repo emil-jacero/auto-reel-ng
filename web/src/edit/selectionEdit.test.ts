@@ -6,7 +6,6 @@ import { draftChapters, ignoredNow, isDirty, ordersOf, readCuts } from './draft.
 import type { Baseline, Draft } from './draft.ts'
 import { cleared, record, redoLabel, undo, undoLabel } from './history.ts'
 import type { History } from './history.ts'
-import { afterMove } from './marks.ts'
 import { NOTHING_INCLUDED, selectionLabel, selectionStep } from './selectionEdit.ts'
 import type { SelectionEdit, SelectionTarget } from './selectionEdit.ts'
 
@@ -19,7 +18,7 @@ const B2 = 'b2.mp4'
 
 const ALL = (): boolean => true
 
-function target(marked: string[] = []): SelectionTarget {
+function target(): SelectionTarget {
   const chapters = [
     { key: 'r0', name: '', movable: [A1, A2, A3, A4], ignored: [] },
     { key: 'r1', name: 'B', movable: [B1, B2], ignored: [] },
@@ -46,7 +45,7 @@ function target(marked: string[] = []): SelectionTarget {
     rotations: new Map(),
     cards: new Map(),
   }
-  return { baseline, draft, marked: new Set(marked), lastMoved: null }
+  return { baseline, draft, lastMoved: null }
 }
 
 const lists = (state: SelectionTarget): Record<string, readonly string[]> =>
@@ -284,30 +283,7 @@ describe('include-many', () => {
   })
 })
 
-describe('the marks and the labels', () => {
-  it('leaves the marks alone but for afterMove: a moved clip is unmarked', () => {
-    const state = target([A2, A3, B2])
-    const moved = selectionStep(state, { onDisk: ALL, type: 'selection-move', identities: [A2, B1], to: 'r1' })
-    assert.deepEqual([...moved.marked].sort(), [A3, B2])
-    assert.deepEqual([...moved.marked], [...afterMove(state.marked, [A2, B1])])
-    const dropped = selectionStep(state, {
-      onDisk: ALL, type: 'selection-drop',
-      identities: [A2, A3],
-      dragged: A2,
-      to: 'r1',
-      gap: 0,
-    })
-    assert.deepEqual([...dropped.marked], [B2])
-    const ignored = selectionStep(state, { onDisk: ALL, type: 'ignore-many', identities: [A2, A3, B1] })
-    assert.equal(ignored.marked, state.marked)
-  })
-
-  it('keeps the marks when the set moves no marked clip', () => {
-    const state = target([A4])
-    const next = selectionStep(state, { onDisk: ALL, type: 'selection-move', identities: [A1], to: 'r1' })
-    assert.equal(next.marked, state.marked)
-  })
-
+describe('the labels', () => {
   it('names a step by its clip or its count', () => {
     const state = target()
     const one = selectionLabel({ onDisk: ALL, type: 'selection-move', identities: [A2], to: 'r1' }, state)

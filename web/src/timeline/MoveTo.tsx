@@ -6,8 +6,8 @@ import { chosenOf, moveChoices, moveWhy } from './moveTo'
 
 /*
  * The Clip tab's Move to… (`clip-multi-select` D5), one component for one clip and for several:
- * a native chapter picker and a Move button, with the reasons Move cannot act in words (the
- * Move marked to… pattern: `aria-disabled`, never `disabled`, so focus stays on the button).
+ * a native chapter picker and a Move button, with the reasons Move cannot act in words
+ * (`aria-disabled`, never `disabled`, so focus stays on the button).
  * `own` is the one clip's chapter, left out of the picker; null for several clips. The tab
  * dispatches the edit: `onMove` is called only when a chapter is chosen and nothing is pending.
  */

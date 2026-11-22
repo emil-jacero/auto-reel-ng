@@ -6,11 +6,10 @@ import {
   buildWriteBody,
   draftChapters,
   groupOf,
-  groupPlace,
   isDirty,
   moveClipTo,
   moveGroup,
-  moveMarkedToEnd,
+  moveToEnd,
   movedSet,
   keptOriginal,
   ordersOf,
@@ -62,16 +61,16 @@ function listed(draft: Draft): Record<string, readonly string[]> {
 describe('groupOf', () => {
   const { draft } = setup(WORKED)
 
-  it('is the marked clips in page order across chapters, not the order they were marked in', () => {
-    const marked = new Set([B1, A4, A2])
-    assert.deepEqual(groupOf(draft.orders, ['r0', 'r1'], marked), [A2, A4, B1])
-    assert.deepEqual(groupOf(draft.orders, ['r1', 'r0'], marked), [B1, A2, A4])
+  it('is the wanted clips in page order across chapters, not the order they were asked for in', () => {
+    const wanted = new Set([B1, A4, A2])
+    assert.deepEqual(groupOf(draft.orders, ['r0', 'r1'], wanted), [A2, A4, B1])
+    assert.deepEqual(groupOf(draft.orders, ['r1', 'r0'], wanted), [B1, A2, A4])
   })
 
   it('keeps only clips a listed chapter plays: a stale or unlisted identity is dropped', () => {
-    const marked = new Set([A2, 'stale.mp4', B1])
-    assert.deepEqual(groupOf(draft.orders, ['r0'], marked), [A2])
-    assert.deepEqual(groupOf(draft.orders, [], marked), [])
+    const wanted = new Set([A2, 'stale.mp4', B1])
+    assert.deepEqual(groupOf(draft.orders, ['r0'], wanted), [A2])
+    assert.deepEqual(groupOf(draft.orders, [], wanted), [])
     assert.deepEqual(groupOf(draft.orders, ['r0', 'r1'], new Set()), [])
   })
 })
@@ -165,31 +164,6 @@ describe('moveGroup', () => {
   })
 })
 
-describe('groupPlace', () => {
-  const { draft } = setup(WORKED)
-
-  it('says where the run starts and how many clips the chapter then plays', () => {
-    assert.deepEqual(groupPlace(draft.orders, [A2, A4, B1], 'r1', 1), { position: 1, total: 4 })
-    assert.deepEqual(groupPlace(draft.orders, [A2, A4, B1], 'r1', 2), { position: 2, total: 4 })
-    assert.deepEqual(groupPlace(draft.orders, [A2, A4, B1], 'r0', 4), { position: 3, total: 5 })
-  })
-
-  it('agrees with where moveGroup puts the run', () => {
-    for (const gap of [0, 1, 2]) {
-      const group = [A2, A4, B1]
-      const place = groupPlace(draft.orders, group, 'r1', gap)
-      const next = moveGroup(draft, group, 'r1', gap)
-      const order = next.orders.get('r1') ?? []
-      assert.equal(order.indexOf(A2) + 1, place?.position)
-      assert.equal(order.length, place?.total)
-    }
-  })
-
-  it('is null for a chapter it does not know', () => {
-    assert.equal(groupPlace(draft.orders, [A1], 'nope', 0), null)
-  })
-})
-
 describe('a group in the draft', () => {
   it('moved away and back over a contiguous original place leaves nothing to save', () => {
     const { baseline, draft } = setup({ r0: [A1, B1, 'b1b', A2], r1: [B2] })
@@ -223,49 +197,49 @@ describe('a group in the draft', () => {
   })
 })
 
-describe('moveMarkedToEnd', () => {
+describe('moveToEnd', () => {
   const lists = ['r0', 'r1']
 
-  it('puts marks from two chapters last in the target, in page order', () => {
+  it('puts clips from two chapters last in the target, in page order', () => {
     const { draft } = setup({ r0: [A1, A2, A3], r1: [B1, B2], r2: ['c1'] })
     const keys = ['r0', 'r1', 'r2']
-    const result = moveMarkedToEnd(draft, keys, new Set([B1, A2]), 'r2')
+    const result = moveToEnd(draft, keys, new Set([B1, A2]), 'r2')
     assert.deepEqual(listed(result.draft), { r0: [A1, A3], r1: [B2], r2: ['c1', A2, B1] })
     assert.deepEqual(result.moved, [A2, B1])
   })
 
-  it('lets a marked clip already in the target join the run at the end', () => {
+  it('lets a wanted clip already in the target join the run at the end', () => {
     const { draft } = setup(WORKED)
-    const result = moveMarkedToEnd(draft, lists, new Set([B1, A1]), 'r1')
+    const result = moveToEnd(draft, lists, new Set([B1, A1]), 'r1')
     assert.deepEqual(listed(result.draft), { r0: [A2, A3, A4], r1: [B2, A1, B1] })
   })
 
   it('is a no-op, the same draft, when the group is already last there', () => {
     const { draft } = setup(WORKED)
-    const result = moveMarkedToEnd(draft, lists, new Set([B2]), 'r1')
+    const result = moveToEnd(draft, lists, new Set([B2]), 'r1')
     assert.equal(result.draft, draft)
     assert.deepEqual(result.moved, [])
-    const none = moveMarkedToEnd(draft, lists, new Set(), 'r1')
+    const none = moveToEnd(draft, lists, new Set(), 'r1')
     assert.equal(none.draft, draft)
   })
 
-  it('ignores a stale mark and an unlisted or unknown target', () => {
+  it('ignores a stale clip and an unlisted or unknown target', () => {
     const { draft } = setup(WORKED)
-    assert.equal(moveMarkedToEnd(draft, lists, new Set(['gone']), 'r1').draft, draft)
-    assert.equal(moveMarkedToEnd(draft, ['r0'], new Set([A1]), 'r1').draft, draft)
-    assert.equal(moveMarkedToEnd(draft, lists, new Set([A1]), 'nope').draft, draft)
+    assert.equal(moveToEnd(draft, lists, new Set(['gone']), 'r1').draft, draft)
+    assert.equal(moveToEnd(draft, ['r0'], new Set([A1]), 'r1').draft, draft)
+    assert.equal(moveToEnd(draft, lists, new Set([A1]), 'nope').draft, draft)
   })
 
   it('leaves a chapter that lost every clip playing none', () => {
     const { draft } = setup(WORKED)
-    const result = moveMarkedToEnd(draft, lists, new Set([B1, B2]), 'r0')
+    const result = moveToEnd(draft, lists, new Set([B1, B2]), 'r0')
     assert.deepEqual(listed(result.draft), { r0: [A1, A2, A3, A4, B1, B2], r1: [] })
   })
 
   it('does not restore a returning clip to its old place (the drag’s edit)', () => {
     const { baseline, draft } = setup({ r0: [A1, A2, A3], r1: [B1] })
-    const away = moveMarkedToEnd(draft, lists, new Set([A1]), 'r1').draft
-    const back = moveMarkedToEnd(away, lists, new Set([A1]), 'r0').draft
+    const away = moveToEnd(draft, lists, new Set([A1]), 'r1').draft
+    const back = moveToEnd(away, lists, new Set([A1]), 'r0').draft
     assert.deepEqual(listed(back), { r0: [A2, A3, A1], r1: [B1] })
     assert.equal(isDirty(baseline, back), true)
   })
@@ -280,7 +254,7 @@ describe('a shipped set (clip-multi-select D2)', () => {
     // clip stays in its order; `selectionStep` leaves it out by `onDisk`, see selectionEdit.test.ts.)
     const gone = { ...draft, orders: new Map(draft.orders).set('r0', [A1, A2, A4]) }
     const shipped = new Set([A2, A3, 'unknown.mp4', B1])
-    const result = moveMarkedToEnd(gone, lists, shipped, 'r1')
+    const result = moveToEnd(gone, lists, shipped, 'r1')
     assert.deepEqual(listed(result.draft), { r0: [A1, A4], r1: [B2, A2, B1] })
     assert.deepEqual(result.moved, [A2, B1])
     assert.ok(![...result.draft.orders.values()].flat().includes(A3))
@@ -288,7 +262,7 @@ describe('a shipped set (clip-multi-select D2)', () => {
 
   it('drops a set of nothing but stale clips as a no-op', () => {
     const { draft } = setup(WORKED)
-    assert.equal(moveMarkedToEnd(draft, lists, new Set(['gone', 'also-gone']), 'r1').draft, draft)
+    assert.equal(moveToEnd(draft, lists, new Set(['gone', 'also-gone']), 'r1').draft, draft)
     assert.deepEqual(groupOf(draft.orders, lists, new Set(['gone'])), [])
   })
 

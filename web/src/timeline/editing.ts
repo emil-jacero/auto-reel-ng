@@ -83,7 +83,7 @@ export type EditBinding = {
   /**
    * Add a cut to a clip's draft, as the Cuts panel's Add does (`timeline-overlay-decisions`):
    * the span in seconds, the reason `manual` unless one is given (an approved suggestion's
-   * kind). The editor ignores it while a save or a move of marked clips is pending.
+   * kind). The editor ignores it while a save or a move of the selected clips is pending.
    */
   onAdd(identity: string, span: { in: number; out: number }, reason?: string): void
   /** Remove a cut from a clip's draft, as the Cuts panel's Remove does (a cut read from the file stays listed, removed). */
@@ -137,7 +137,7 @@ export type EditBinding = {
   menuFacts(): MenuFacts
   /**
    * Rotate every one of `identities` that is on disk and in a chapter a quarter `way`, each from
-   * its own turn: one draft edit ("3 clips rotated right."), as Rotate marked makes it. Ignored
+   * its own turn: one draft edit ("3 clips rotated right."), as a group Rotate makes it. Ignored
    * while locked.
    */
   onRotateMany(identities: readonly string[], way: Way): void
@@ -155,7 +155,7 @@ export type EditBinding = {
   menuAt: MenuBridge
   /** What the Timeline lends the Clip tab's Cuts panel for a clip it draws: "+ Cut at playhead" and Edit. */
   trackCuts: TrackCutsBridge
-  /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
+  /** A save is in flight, or a move of the selected clips is pending: the handles and fields change nothing. */
   locked: boolean
   /**
    * Only the move of the selected clips (Move to…) is pending, no save: the words of an
@@ -173,7 +173,7 @@ export type EditBinding = {
   /**
    * One edit of the draft: the card of the chapter (saved name) takes `seconds`. `words` is
    * what the live region says (a drag's release); null for a key, whose result is the
-   * handle's value. Ignored while a save or a move of marked clips is pending.
+   * handle's value. Ignored while a save or a move of the selected clips is pending.
    */
   onCardDuration(chapter: string, seconds: number, words: string | null): void
   /**
