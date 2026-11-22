@@ -1,20 +1,19 @@
 import { OWN_CHAPTER_NOTE } from './chapterNames.ts'
-import { MARK_HINT } from './marks.ts'
 
 /*
  * The Clips section's Help (`help-text-declutter`): the words that used to sit above and beside
  * the chapters, in the order they were read. Pure, so the sentences are tested without the page.
  */
 
-export const REORDER_SEVERAL =
-  'Drag a clip by its handle, or use its arrows, to reorder it. Drag it into another chapter to ' +
-  'move it there; mark clips and use Move marked to… to move several at once.'
+export const SELECT_NOTE = 'Press a clip to select it; Ctrl or Cmd adds one, Shift selects a range.'
 
-export const REORDER_ONE =
-  'Drag a clip by its handle, or use its arrows. To split the event into chapters, use Add ' +
-  'chapter in the Event tab’s Chapters list; clips can then be dragged between them.'
+export const MENU_NOTE = 'Right-click a clip, or press Shift+F10, for its menu.'
 
-export const IGNORED_NOTE = 'Ignored clips are not played and cannot be moved.'
+export const MOVE_NOTE =
+  'Move clips on the Timeline, or with Move earlier, Move later and Move to… in the Clip tab.'
+
+export const IGNORED_NOTE =
+  'Ignored clips are not played; drag one onto the Timeline to include it.'
 
 export const MISSING_NOTE =
   'A missing clip is not on disk and stays in its chapter: restore the file, or remove it from reel.yaml.'
@@ -23,7 +22,7 @@ export const NEW_CLIP_NOTE =
   'A new clip joins reel.yaml once its chapter’s order, one of its cuts, or the list of chapters is saved.'
 
 export function clipsHelpLines(opts: {
-  /** The event lists more than one chapter. */
+  /** The event lists more than one chapter (the own chapter's note is for those). */
   several: boolean
   hasIgnored: boolean
   hasMissing: boolean
@@ -32,14 +31,13 @@ export function clipsHelpLines(opts: {
   /** A new clip waits (the workspace drops the bin's own line for it). */
   hasNewClip?: boolean
 }): string[] {
-  const lines = [opts.several ? REORDER_SEVERAL : REORDER_ONE]
+  const lines = [SELECT_NOTE, MENU_NOTE, MOVE_NOTE]
   if (opts.hasIgnored) {
     lines.push(IGNORED_NOTE)
   }
   if (opts.hasMissing) {
     lines.push(MISSING_NOTE)
   }
-  lines.push(MARK_HINT)
   if (opts.ownChapter && opts.several) {
     lines.push(OWN_CHAPTER_NOTE)
   }

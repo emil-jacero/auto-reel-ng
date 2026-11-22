@@ -2,31 +2,41 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { OWN_CHAPTER_NOTE } from './chapterNames.ts'
-import { IGNORED_NOTE, MISSING_NOTE, NEW_CLIP_NOTE, REORDER_ONE, REORDER_SEVERAL, clipsHelpLines, newClipsLine } from './clipsHelp.ts'
-import { MARK_HINT } from './marks.ts'
+import {
+  IGNORED_NOTE,
+  MENU_NOTE,
+  MISSING_NOTE,
+  MOVE_NOTE,
+  NEW_CLIP_NOTE,
+  SELECT_NOTE,
+  clipsHelpLines,
+  newClipsLine,
+} from './clipsHelp.ts'
 
 describe('the Clips help', () => {
   const plain = { several: false, hasIgnored: false, hasMissing: false, ownChapter: true }
+  const always = [SELECT_NOTE, MENU_NOTE, MOVE_NOTE]
 
-  it('holds the reorder words of one chapter and of several, then the marking words', () => {
-    assert.deepEqual(clipsHelpLines(plain), [REORDER_ONE, MARK_HINT])
-    assert.deepEqual(clipsHelpLines({ ...plain, several: true, ownChapter: false }), [REORDER_SEVERAL, MARK_HINT])
+  it('says how to select, open the menu and move, in the words of the plain list', () => {
+    assert.deepEqual(clipsHelpLines(plain), always)
+    assert.equal(SELECT_NOTE, 'Press a clip to select it; Ctrl or Cmd adds one, Shift selects a range.')
+    assert.equal(MENU_NOTE, 'Right-click a clip, or press Shift+F10, for its menu.')
+    assert.equal(
+      MOVE_NOTE,
+      'Move clips on the Timeline, or with Move earlier, Move later and Move to… in the Clip tab.',
+    )
   })
 
-  it('keeps the old words: the instructions begin as they did', () => {
-    assert.match(REORDER_SEVERAL, /^Drag a clip by its handle, or use its arrows, to reorder it\./)
-    assert.match(REORDER_ONE, /^Drag a clip by its handle, or use its arrows\./)
-    assert.match(MARK_HINT, /^Mark clips with the box at the top right/)
-  })
-
-  it('sends the operator to the Event tab for Add chapter, not to the bin', () => {
-    assert.match(REORDER_ONE, /Add chapter in the Event tab’s Chapters list/)
-    assert.doesNotMatch(REORDER_ONE, /below the chapters/)
+  it('names no handle, mark or arrow: the bin has none', () => {
+    for (const line of [...always, IGNORED_NOTE]) {
+      assert.doesNotMatch(line, /handle|mark|arrows|Move up|Move down/i)
+    }
   })
 
   it('adds the ignored and missing notes only when they apply', () => {
     const lines = clipsHelpLines({ ...plain, hasIgnored: true, hasMissing: true })
-    assert.deepEqual(lines, [REORDER_ONE, IGNORED_NOTE, MISSING_NOTE, MARK_HINT])
+    assert.deepEqual(lines, [...always, IGNORED_NOTE, MISSING_NOTE])
+    assert.equal(IGNORED_NOTE, 'Ignored clips are not played; drag one onto the Timeline to include it.')
   })
 
   it('says the own chapter once, only while other chapters are listed', () => {
@@ -40,10 +50,15 @@ describe('the Clips help for a new clip', () => {
   it('adds the joins-reel.yaml sentence only while a new clip waits', () => {
     const plain = { several: false, hasIgnored: false, hasMissing: false, ownChapter: true }
     assert.ok(!clipsHelpLines(plain).includes(NEW_CLIP_NOTE))
-    assert.deepEqual(clipsHelpLines({ ...plain, hasNewClip: true }), [REORDER_ONE, MARK_HINT, NEW_CLIP_NOTE])
+    assert.deepEqual(clipsHelpLines({ ...plain, hasNewClip: true }), [
+      SELECT_NOTE,
+      MENU_NOTE,
+      MOVE_NOTE,
+      NEW_CLIP_NOTE,
+    ])
     assert.deepEqual(
       clipsHelpLines({ several: true, hasIgnored: true, hasMissing: true, ownChapter: true, hasNewClip: true }),
-      [REORDER_SEVERAL, IGNORED_NOTE, MISSING_NOTE, MARK_HINT, OWN_CHAPTER_NOTE, NEW_CLIP_NOTE],
+      [SELECT_NOTE, MENU_NOTE, MOVE_NOTE, IGNORED_NOTE, MISSING_NOTE, OWN_CHAPTER_NOTE, NEW_CLIP_NOTE],
     )
     assert.equal(NEW_CLIP_NOTE, newClipsLine(0, true, ''))
   })
