@@ -1,5 +1,5 @@
 import type { Clip, EventDetail } from '../api/event.ts'
-import { keptCuts } from '../cuts/times.ts'
+import { formatTime, keptCuts } from '../cuts/times.ts'
 import { chapterHeading } from '../events/labels.ts'
 import { namesIn, plural } from '../events/names.ts'
 import { playedMs } from '../timeline/edgeTrim.ts'
@@ -68,6 +68,35 @@ export function removedCaption(count: number): string {
 /** The identities the rows list, top to bottom: the order a Shift+press ranges over. */
 export function binOrder(rows: readonly BinRow[]): readonly string[] {
   return rows.map((row) => row.identity)
+}
+
+/** A row's second line: where the clip is, and what happened to it ("Kvällen · 2 of 3 · was 4"). */
+export function rowPlace(row: Pick<BinRow, 'place' | 'moved'>): string | null {
+  if (row.place === null) {
+    return null
+  }
+  return row.moved === null ? row.place : `${row.place} · ${row.moved}`
+}
+
+/** A row's kept length as the Timeline writes a length ("0:06.02"); null when it is unknown. */
+export function rowLength(row: Pick<BinRow, 'keptMs'>): string | null {
+  return row.keptMs === null ? null : formatTime(row.keptMs / 1000)
+}
+
+/**
+ * What a row says to assistive technology, in one sentence: name, place, status, kept length and
+ * a typed cut. Display words only: the row's own text and icons say the same.
+ */
+export function rowWords(row: BinRow): string {
+  const parts = [row.name, rowPlace(row), row.status]
+  const length = rowLength(row)
+  if (length !== null) {
+    parts.push(`kept ${length}`)
+  }
+  if (row.typed) {
+    parts.push('a typed cut waits')
+  }
+  return parts.filter((part) => part !== null).join(', ')
 }
 
 /** The status a listed (played) clip has: what the page read, as the draft stands. */
