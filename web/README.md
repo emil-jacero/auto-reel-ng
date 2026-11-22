@@ -141,14 +141,15 @@ it plays; its removed and ignored lists count their own. A missing clip (listed 
 panel), that takes it out of the play order into a list captioned, for example, "1 clip
 removed from reel.yaml when you save", with **Undo** until Save; Save then drops only
 its `reel.yaml` entry and its own per-clip properties, and no file on disk is touched.
-Every clip on disk that a chapter plays has a **Cuts** control after its move buttons
-(under its name on a wide panel; under the handle, with the count only, on a narrow one)
-that shows a panel under the row (**D-14**): the clip's cuts (start → end, length, the
+The inspector's **Clip** tab holds the clip's **Cuts** panel (**D-14**, `plain-clip-bin` D4) for
+every clip that is on disk, listed in a chapter and not excluded, whether or not the Timeline's
+track draws it; its heading is the cut summary, for example "2 cuts · −4.5 s", and is no
+button. The panel lists the clip's cuts (start → end, length, the
 reason in words; `manual` reads "Cut by hand") and two typed times, as seconds (`75.5`),
 `m:ss` (`1:15.5`) or `h:mm:ss` (`1:01:15.5`), with up to three decimals after `.` or `,`.
 **Add cut** refuses, at the field and in words, a time it cannot read, an end that is not
 after the start, and an overlap with another cut. The panel knows a clip's length from its
-preview (below) once Watch has read it, else from the `duration` the event detail carries
+preview (below) once Play has read it, else from the `duration` the event detail carries
 (the length measured when the clip's thumbnail was made; `null` until one was, and only the
 detail read after that carries it, so on a first visit to an event the thumbnails Edit mode
 asks for show up in the detail only on the next read, for example a reload). With a length
@@ -160,28 +161,28 @@ A cut made here is saved with the reason
 `manual`. **Remove** keeps a cut read from `reel.yaml` listed, struck through, with
 **Undo** (refused, in words, when another cut now overlaps it); a cut added in this Edit
 mode just goes. A time typed but not added counts as unsaved, is named in the save bar
-("Cut typed on s1710001.mp4, not added"), marks its clip's Cuts control "typed" (also
-while the panel is hidden) and holds Save back, as a date typed in part does; it survives hiding the panel, a Move to… and a drag into another chapter, since the editor, not the row, holds
-the panel's state. A save writes only the changed clips' `trims` (their title-clip choice,
+("Cut typed on s1710001.mp4, not added"), puts the word "typed" in its clip's bin row
+and holds Save back, as a date typed in part does; it survives selecting another clip (which
+unmounts the panel), a Move to… and a move on the Timeline, since the editor, not the panel,
+holds the panel's state. A save writes only the changed clips' `trims` (their title-clip choice,
 rotation and exclusion as read; no empty entry), and a cut on a NEW clip writes its
 chapter, since `reel.yaml` refuses properties for a clip no chapter lists. A missing
-clip shows how many cuts it has, and offers no Cuts control.
-The panel's first control, **Watch**, opens the clip's preview there (**D-16**,
-`preview/`); in Edit mode the clip's thumbnail is a "Watch <name>" button that shows the
-panel and opens it in one press (not the drag handle; the box keeps its size). One preview
+clip's information lists its cuts; it has no Cuts panel.
+The clip's preview is not in the panel: it is the bin's player (**D-16**, `preview/`,
+`edit/BinPlayer.tsx`), above the bin's list, which shows the selected clip. One preview
 is open at a time, and none exists until asked for: no `<video>` and no request to the
-media route (`GET …/media?clip=&v=<mtime>`, `api/clipMedia.ts`) before Watch, on any
-number of clips. The preview has its own controls on a native `<video>` (no `controls`, no
-autoplay, the thumbnail as poster): Close (Escape too; focus returns to the opener), Play
+media route (`GET …/media?clip=&v=<mtime>`, `api/clipMedia.ts`) before Play is pressed in the
+player, on any number of clips. The preview has its own controls on a native `<video>` (no `controls`, no
+autoplay, the thumbnail as poster): Close (Escape too), Play
 / Pause (a press while the clip loads plays it once it can; an opened preview says when it
 is ready), a playhead slider (Space plays or pauses, arrows 0.1 s, Page Up / Page Down 1
 s, Home / End; a press or a drag along it; it says `0:01.234 of 0:06.02, in cut 2`, at
 most once a second while playing), **Skip cuts**, **Set From** and **Set To**. Under the
 picture, a cut bar draws the clip's cuts by shape (solid, a removed one dashed, the span
 typed in the fields outlined, only while Add cut would accept it) with a legend of the
-kinds drawn. While a preview is open, the panel's Watch reads **Hide player**. Set From /
+kinds drawn. Set From /
 Set To write the playhead's time to the millisecond in the panel's format; it counts as
-typed, so the typed mark and the save bar's hold apply. Skip cuts plays the clip as the
+typed, so the row's "typed" and the save bar's hold apply. Skip cuts plays the clip as the
 movie will: it looks ahead of each presented frame (`requestVideoFrameCallback`) the last callback gap, or
 the typical one of the last eight plus one frame interval if more, and never more than four
 intervals, so a dropped frame or a browser that calls back only every second frame
@@ -213,7 +214,7 @@ thumbnail**: a button over the whole frame with a play glyph in a disc, named "P
 (there is no button in the file cell). The glyph is seen on hover, on keyboard focus, while the
 player is open and always without a fine hovering pointer; the button is always in the tab
 order, and a press or tap anywhere on the frame reaches it. It opens the same preview
-component as Edit mode's Watch (not a fork) in a row of its own under the clip's row, as wide
+component as Edit mode's bin player (not a fork) in a row of its own under the clip's row, as wide
 as the table and named "Player for <name>": the preview copy when one is ready, else the
 original, with Play original and the Firefox no-sound note exactly as above. While the player is
 open the control shows the hide icon and is named "Hide player of <name>", so it never shares a
@@ -358,9 +359,9 @@ src/
 │   └── edit.css          Edit mode's fields, rows and save bar
 ├── cuts/
 │   ├── times.ts          typed times read and written, a cut's checks, the cut words and reasons (pure, + times.test.ts)
-│   ├── CutsPanel.tsx     Edit mode's Cuts control and panel, and the cut list both views share
+│   ├── CutsPanel.tsx     the Clip tab's Cuts panel, and the cut list both views share
 │   ├── ReadCuts.tsx      the event page's cut indicator and list, and the read of its cuts
-│   └── cuts.css          the control, the panel and the event page's indicator
+│   └── cuts.css          the panel and the event page's indicator
 ├── movie/
 │   ├── MoviePanel.tsx    the event page's Movie section: probe, player, troubles by cause
 │   ├── ChapterList.tsx   the chapter jump list under the player: jump, current mark (+ chapters.test.ts)
@@ -375,8 +376,8 @@ src/
 │   ├── source.test.ts    the table and the words (npm test)
 │   ├── playback.ts       skip spans, where playback goes per frame, slider keys, the preview's words (pure)
 │   ├── playback.test.ts  Edit mode's words byte for byte, the read-only advice, when Skip cuts is offered (npm test)
-│   ├── ClipPreview.tsx   a clip's preview, in the Cuts panel or (read-only) on the event page: the video, controls, cut bar, notes
-│   └── preview.css       the preview, the cut bar, and the thumbnail as a Watch button (Edit mode)
+│   ├── ClipPreview.tsx   a clip's preview, in the bin's player or (read-only) on the event page: the video, controls, cut bar, notes
+│   └── preview.css       the preview and the cut bar
 ├── playback/
 │   ├── coordinator.ts    one playing video per page: a started video pauses the others; installed in main.tsx (pure, + coordinator.test.ts)
 ├── timeline/             the event page's Timeline (GUI v2, D-20): read only in the read view, trim handles in Edit mode; the pure modules have tests under npm test

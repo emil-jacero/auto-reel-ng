@@ -217,7 +217,7 @@ import {
  * `ChapterDialogs.tsx`); clips move between them on the Timeline or with the Clip
  * tab's Move to… (`ClipBin.tsx` lists them, one plain list). What a name
  * means for clips added later (D-12) is said beside the chapter
- * (`chapterNames.ts`). So are each clip's cuts, in a panel under its row
+ * (`chapterNames.ts`). So are each clip's cuts, in the Clip tab's panel
  * (`cuts/CutsPanel.tsx`): a cut typed but not added holds Save back, as a date
  * typed in part does, and so does a refused name in the card dialog's Name field.
  * A chapter is renamed in that dialog (`card/NameField.tsx`, opened by the chapter's Edit

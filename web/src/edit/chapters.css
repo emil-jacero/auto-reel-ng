@@ -56,17 +56,6 @@
     display: flex;
   }
 
-  /* A clip moved in from another chapter: where it came from, cut short past 12rem. */
-  .clip-from {
-    max-inline-size: 12rem;
-
-    & > span {
-      min-inline-size: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  }
-
   @media (pointer: coarse) {
     /*
      * 16 px both ways, for the text buttons (Undo): each 32 px button's area grows 6 px up and

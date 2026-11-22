@@ -138,7 +138,7 @@ export function BinPlayer({
   locked: boolean
   /** The editor's panel store: Set From and Set To write the shown clip's fields in it. */
   panels: CutPanels
-  /** The shown clip's panel went from no typed text to some, or back (the Cuts control says "typed"). */
+  /** The shown clip's panel went from no typed text to some, or back (the clip's bin row says "typed"). */
   onTyped: (identity: string, typed: boolean) => void
   /** Counts the row Watch presses: each moves keyboard focus to Play once the player shows its clip. */
   focusAsk: number
