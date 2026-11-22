@@ -147,7 +147,13 @@ export function ClipInspector({
           type="button"
           className="btn btn-secondary ct-ignore"
           aria-disabled={locked || undefined}
-          aria-label={offers.action === 'undo' ? `Undo removing ${name}` : undefined}
+          aria-label={
+            offers.action === 'undo'
+              ? `Undo removing ${name}`
+              : offers.action === 'remove'
+                ? `${end.label}: ${name}`
+                : undefined
+          }
           onClick={() => {
             if (locked) {
               editing.announce(MOVE_LOCKED)
