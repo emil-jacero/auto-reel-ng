@@ -45,13 +45,13 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 3. Verification and record
 
-- [ ] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`web-app`, `event-timeline`).
+- [x] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`web-app`, `event-timeline`).
   Also:
   - measure and report how many whole rows the bin shows with the player shown, at 1280×720 and 1440×900;
   - take screenshots of the player in light and dark at 1440, 1100 and 390 px, shown and hidden, and look at them for
     clipping;
   - check that selecting 50 clips one after the other makes no media request and creates no clip video.
-  Status (2026-11-21, round 4, left open on one item):
+  Status (round 4 of 2026-11-21; the C5 item closed in round 5 of 2026-11-22):
   - Full matrix in Firefox 159 and Chrome 158: 0 FAIL in both (Firefox 102 PASS, 6 PART; Chrome 100 PASS, 2 PASS\*, 5 PART,
     1 PREX). The PART and PREX rows are outside the page (touch emulated, no HEVC in Firefox, a Sony clip's sound in
     Firefox, no real touch screen) or are the accepted gates below. Firefox 132 was not run again this round. Since the
@@ -72,16 +72,40 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
       the first Move;
     - scrub (at least 30 frames per second): Firefox 159 is UNVERIFIED because the harness reads 22 fps on the archived
       commit (branch 27.6, `origin/main` 27.5); Chrome 43.9 fps.
-  - Open, C5 (a cut that ends between two frames is jumped over once) in Firefox 159: a frame at the cut's own start
-    slips through in some plays. Interleaved A/B, 5 plays a round, branch :5181 against `origin/main` :5182, Firefox 159:
-    branch 116 of 130 plays clean (89 %), `origin/main` 128 of 130 (98 %), Fisher exact p = 0.003 (round-4 run alone:
-    37 of 40 against 40 of 40). Chrome 158: 30 of 30 on both. So the slip exists on `origin/main` but is about seven
-    times as frequent on the branch; an earlier summary of 20 of 20 against 19 of 20 is not what the logs add up to. The
-    single-play C5 in the full matrix passes in both browsers. The frame loop in `ClipPreview` is not changed by this
-    change (its Skip state is held by the player and the preview remounts when the player opens or closes), so the cause
-    is probably the player's box or the remount, not yet found. Logs (harness scratchpad): `logs/c5_ab_firefox.txt`,
-    `logs/c5_ab_firefox2.txt` (branch 79 of 90, `origin/main` 88 of 90), `logs/c5_ab_chrome.txt`, and
-    `logs/r4/c5_ab_firefox.txt`.
+  - Closed, C5 (a cut that ends between two frames is jumped over once; round 5, 2026-11-22). Bisect: the first bad
+    commit is 0d9001e1 (dock the clip preview in the bin as a player), by timing only. Root cause: the
+    `requestVideoFrameCallback` lookahead of the Skip cuts loop under Firefox's every-second-frame callback cadence. It is
+    a pre-existing loop that slips about 1 % of plays on `origin/main` 1ae3c68b (1 of 80 in round 5); the docked player
+    only shifted the callback timing enough to make it about seven times as frequent. Fix commits 8139edaf, 0609fea5 and
+    0e3e7da8. The loop now keeps a `FrameClock` per clip (kept across pause and play, resumed with `frameSeeked`) and
+    looks ahead `min(4 intervals, max(last step, median of the last 8 steps + 1 interval))`. The interval is read from
+    `presentedFrames`. Until 3 steps are counted the lookahead is a fixed 125 ms, and `playFrom` takes that lookahead so
+    Play jumps a cut that starts within it of the start. `skipAt` matches any span that starts inside the window. Stated
+    worst-case cost, kept frames just before a cut that go unshown: Chrome at most 1 per cut, also with a dropped frame in
+    the window; Firefox 1, or 2 on half of the cut phases; up to 125 ms while a clip's cadence is unknown, when Play
+    starts within that of a cut; never more than 4 intervals however long a stall lasted. Not covered: a callback more
+    than one frame later than the typical step, or two late callbacks in a row, within one callback gap of a cut (the
+    earlier loop did not cover these either). Unverified in a browser: that Firefox `presentedFrames` counts every
+    presented frame and not one per callback (if it counted one per callback, Firefox would lose up to 3 frames).
+    Measured, Playwright 1.65.2 (Firefox 159, Chrome 158), branch :5181 at 0e3e7da8 against `origin/main` :5182 at
+    1ae3c68b, interleaved rounds of 5, every RESULT line summed by script:
+    - A/B cut-frame slips (a cut at 1.0 s in a 50 fps clip, single Play from 0.5 s): Firefox branch 0 of 80, main 1 of 80
+      (Fisher p = 1.0); Chrome branch 0 of 40, main 0 of 40; no errors.
+    - Kept-frame loss before the cut (a frame is 20 ms), median / mean / max in ms: Firefox branch 20 / 20.8 / 40 (1
+      frame in 77 plays, 2 in 3), main 20 / 31.8 / 60 (1 frame in 56, 2 in 1, 3 in 23); Chrome branch 20 / 24.0 / 40 (0 in
+      1, 1 in 30, 2 in 9), main 20 / 19.5 / 20 (0 in 1, 1 in 39). On Chrome the branch lost 2 frames in 9 of 40 plays,
+      above the 1-frame figure of the unit traces, and its mean is 4.5 ms above main's; the median is equal.
+    - Play-near-cut (Skip cuts on, pause, seek to the cut start minus d, press Play, count frames shown inside the cut;
+      10 plays per d): branch 0 of 10 at d = 20, 40 and 60 ms in both browsers (0 of 60); main 10, 10 and 10 of 10 in
+      Chrome and 10, 10 and 9 of 10 in Firefox (59 of 60), because `origin/main` has no start rule. On the branch, Play
+      from this near a cut starts after the cut.
+    - Full matrix, 0 FAIL in both: Firefox 159 102 PASS, 5 PART (A5, P8, P17, X1, T5), 1 PREX (B5b); Chrome 158 100 PASS,
+      2 PASS\* (P7, X2), 4 PART (A5, P17, X1, T5), 2 PREX (B5, B5b). Tallied from both the status lines and the results
+      json.
+    - Not done: a browser A/B of the Chrome 2-frame losses, and the follow-up to shorten them.
+    Logs (harness scratchpad, `logs/fix3/`): `ab_branch_firefox.txt`, `ab_main_firefox.txt`, `ab_branch_chrome.txt`,
+    `ab_main_chrome.txt`, `near_{branch,main}_{firefox,chrome}_{20,40,60}.txt`, `ff159.txt`, `cr158.txt`,
+    `results-ff159.json`, `results-cr158.json`.
   - Operator decision (round 4): the player starts hidden in a window shorter than 70.125rem (1122 px) until the
     operator chooses (design D3).
 - [x] 3.2 Record the change:
