@@ -761,15 +761,15 @@ While a save is in flight or a move of marked clips is pending, the trim handles
 
 ### Requirement: Edit mode holds one video at a time
 
-Edit mode SHALL never hold more than one `<video>`: the Timeline's, which exists while its track is open ("The playhead scrubs one video"), or one clip preview's. Opening a clip's preview ("Edit mode previews a clip on request") SHALL release the Timeline's video, stopping its playback and its loading, and keep the Timeline open with the playhead where it stood and every handle usable. Moving the playhead, or pressing Play, on the Timeline SHALL close any open clip preview and create the Timeline's video again at the playhead (it loads the proxy of the clip the playhead is in, as when the track opens). Releasing and creating the video SHALL NOT be an edit, SHALL NOT disturb a drag or a typed time, and SHALL NOT move keyboard focus off the control that had it.
+Edit mode SHALL never hold more than one `<video>`: the Timeline's, which exists while its track is open ("The playhead scrubs one video"), or the preview's in the bin's player. Opening a clip's preview, with the player's Play ("Edit mode previews a clip on request"), SHALL release the Timeline's video, stopping its playback and its loading, and keep the Timeline open with the playhead where it stood and every handle usable. Moving the playhead, or pressing Play, on the Timeline SHALL close the player's preview, which shows its clip's thumbnail again, and create the Timeline's video again at the playhead (it loads the proxy of the clip the playhead is in, as when the track opens). Selecting a clip on the track SHALL NOT release the Timeline's video: the player shows the clip's thumbnail until its Play is pressed. Releasing and creating the video SHALL NOT be an edit, SHALL NOT disturb a drag or a typed time, and SHALL NOT move keyboard focus off the control that had it.
 
 #### Scenario: A preview releases the timeline's video
-- **WHEN** in Edit mode the Timeline's video has been scrubbed to 1.6 s of `s1710001.mp4` and the operator presses Watch in that clip's Cuts panel
-- **THEN** the page holds one video, the clip's preview; the Timeline is still open with its playhead at 1.6 s and its handles working
+- **WHEN** in Edit mode the Timeline's video has been scrubbed to 1.6 s of `s1710001.mp4`, the operator presses that clip's block and then Play in the bin's player
+- **THEN** after the press on the block the page still holds the Timeline's video; after Play it holds one video, the clip's preview, and the Timeline is still open with its playhead at 1.6 s and its handles working
 
 #### Scenario: Scrubbing closes the preview
-- **WHEN** a clip's preview is open and the operator moves the Timeline's playhead
-- **THEN** the preview closes, the Timeline's video shows the playhead's frame, and the page holds one video
+- **WHEN** a clip's preview is open in the bin's player and the operator moves the Timeline's playhead
+- **THEN** the preview closes, the player shows the clip's thumbnail, the Timeline's video shows the playhead's frame, and the page holds one video
 
 ### Requirement: The timeline's gates and layout hold with handles
 
@@ -1752,7 +1752,8 @@ clip's facts SHALL be those of the last read; a clip that read no longer has SHA
 order last saved SHALL be shown. Play on the Timeline SHALL follow the drawn order.
 
 #### Scenario: A reorder is drawn before Save
-- **WHEN** in Edit mode the operator moves `s1710002.mp4` above `s1710001.mp4` in its chapter's list
+- **WHEN** in Edit mode the operator selects `s1710002.mp4` and presses Move earlier in its Clip tab, so that it
+  stands above `s1710001.mp4`
 - **THEN** the Timeline draws `s1710002.mp4` first at once, no note about the order last saved is shown, nothing has
   been written, and Play from 0 plays `s1710002.mp4` before `s1710001.mp4`
 
@@ -1955,7 +1956,7 @@ release outside the track SHALL cancel with no edit, and Escape SHALL only cance
 
 #### Scenario: Touch does not drag
 - **WHEN** with touch the operator swipes on a clip block
-- **THEN** the track scrolls and no drag starts; a finger reorders through the bin or the Alt keys
+- **THEN** the track scrolls and no drag starts; a finger reorders with Move earlier and Move later in the Clip tab
 
 #### Scenario: Escape
 - **WHEN** during a drag the operator presses Escape

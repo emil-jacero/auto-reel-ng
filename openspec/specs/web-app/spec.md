@@ -3736,45 +3736,65 @@ coarse pointer SHALL take a tap anywhere in an area of at least 44 × 44 CSS pix
 
 ### Requirement: Edit mode previews a clip on request
 
-In Edit mode, the Cuts panel of every clip that offers one (an included or new clip on disk) SHALL offer a
-**Watch** control as the panel's first control. Pressing it SHALL open the clip's preview, a player for the
-clip, in the panel, above the clip's cuts, and pressing it while the preview is open SHALL close it. The
-control SHALL be named "Watch <name>", where <name> is the clip's name as its row names it, and SHALL say to
-assistive technology whether the preview is open. While the preview is open, the control SHALL show that a press
-closes it: its words SHALL be "Hide player", and its name "Hide player of <name>". The preview SHALL be a region
-named "Player for <name>".
+In Edit mode, the top of the clip bin SHALL hold the **player**: a region named "Player for <name>" that holds the
+preview of one clip, the **shown clip**, where <name> is the clip's name as its row names it. The shown clip SHALL be
+the last clip of the selection, or the clip of a selected cut ("One selection in the workspace", `event-timeline`),
+when that clip is on disk. While a title card, a suggestion or nothing is selected, the player SHALL keep the clip it
+showed. Before a clip on disk has been selected, and when the shown clip is no longer listed or no longer on disk, the
+player SHALL say "Select a clip to watch it." and offer no control but Hide player: it SHALL be an inert placeholder
+as tall as the player with a clip shown, with no focusable playhead or button, no "Nothing is loaded" line and no
+other control in the accessibility tree, so that showing the first clip changes no row's size or place. The player
+SHALL name the shown clip in its heading. In the bin's side pane with a fine pointer that heading MAY be for
+assistive technology alone, because the selected row and the Clip tab name the clip on screen. The clip's preview is **open** while the player holds a video for it: pressing the player's Play
+SHALL open it, and nothing else SHALL. A new shown clip SHALL close the preview of the clip before it.
 
-**From the row.** In Edit mode, the thumbnail of every clip that offers a Cuts panel SHALL also be a button
-named "Watch <name>" that opens the same preview in one press. Pressing it SHALL show the clip's Cuts panel
-when it is hidden, open the preview there, closing any other, and move keyboard focus to the preview's Play.
-Pressing it while the preview is open SHALL keep the preview open and move keyboard focus to its Play. The
-thumbnail SHALL keep its box, its size and its place in the row: being a button changes no row's size or
-position. It SHALL NOT start a drag: the drag handle stays a control of its own, and a clip moves only by its handle or
-its move buttons. A thumbnail that could not be shown (its "No preview" box) SHALL open the preview all the
-same.
+**From the row.** In Edit mode, the thumbnail of every clip that offers a Cuts panel SHALL be a button named "Watch
+<name>". Pressing it SHALL select the clip alone, show the player when it is hidden, and move keyboard focus to the
+player's Play, without playing. Pressing it while that clip is shown SHALL keep its preview as it is and move keyboard
+focus to Play. The thumbnail SHALL keep its box, its size and its place in the row: being a button changes no row's
+size or position. It SHALL NOT start a drag: the drag handle stays a control of its own, and a clip moves only by its
+handle or its move buttons. A thumbnail that could not be shown (its "No preview" box) SHALL act all the same.
+
+**Hide and show.** **Hide player** SHALL remove the player from the bin, close the preview, and give the bin's list the room. A hidden
+player SHALL have no bar of its own: a **Show player** button SHALL take its place in the first row of the bin's marks
+toolbar, beside the Clips help, and SHALL keep that row's height and the place of the count and Clear marks ("The
+marks line is one aligned unit"). Its name SHALL be "Show player", and "Show player, <name>" while a clip is shown,
+<name> as its row names it. Show player SHALL bring the player back with the shown clip, its preview closed.
+Show player, Hide player and the row's Watch SHALL each record an explicit choice, kept in the browser for later
+visits with every read and write of it guarded; an explicit choice SHALL always win, whatever the window. While the
+operator has made no choice, in the bin's side pane (a window 960 pixels wide or more, with no coarse pointer) the
+player SHALL start hidden in a window shorter than 70.125rem (1122 CSS pixels at a 16 pixel root: the height at
+which the four played rows of `2024-08-20 - Två kapitel - Tjörn` fit whole with the player shown) and shown in a
+window that height or taller; a stacked page or a coarse pointer starts shown. With no choice, the player SHALL
+follow the window across that height as it is resized, and a resize SHALL change nothing once there is a choice.
+When the browser keeps nothing, there is no stored choice, so the height rule decides.
 
 **What it plays.** The preview SHALL play the clip's preview copy when the clip has a ready one, and the clip's
 own file, the original, otherwise, as "A clip's preview plays its preview copy when one is ready" requires. The
 original is the file the service serves from `GET /api/v1/events/{event_id}/media?clip=<identity>`. The event id
 and the clip's full identity SHALL be sent exactly as the event detail gives them, and the clip's modification
-time, exactly as the event detail gives it, as `v`. Until it plays, the preview SHALL show the clip's thumbnail. It SHALL NOT start playing by
-itself. A preview opened with Watch, from the panel or the thumbnail, SHALL stand at the clip's start, also
-after an earlier preview of the clip was closed elsewhere in it. A clip displayed in portrait, such as a phone
-clip whose container rotates it, SHALL be shown whole, turned as a player shows it. Unless a scenario of this
-requirement says that its clip has a ready preview copy, it SHALL be read for a clip that has none.
+time, exactly as the event detail gives it, as `v`. Until its preview is open, the player SHALL show the clip's
+thumbnail. It SHALL NOT start playing by itself. A preview SHALL open at the clip's start, also after an earlier
+preview of the clip was closed. A clip displayed in portrait, such as a phone clip whose container rotates it, SHALL
+be shown whole, turned as a player shows it. Unless a scenario of this requirement says that its clip has a ready
+preview copy, it SHALL be read for a clip that has none.
 
 **Nothing loads before it is asked for.** The page SHALL NOT request a clip's media or its preview copy, and
-SHALL NOT create a video element for either, before the operator opens that clip's preview. This SHALL hold for any number of clips,
+SHALL NOT create a video element for either, before the operator opens that clip's preview. The one exception is the
+Timeline's own video ("The playhead scrubs one video"), which the track brings and which loads the preview copy of the
+clip its playhead is in; it is not a clip's preview and no selection moves it. Selecting a clip, and
+showing it in the player, SHALL request only its thumbnail, beyond what the Timeline's video had requested before the
+selection, and SHALL NOT create a clip-preview video element. This SHALL hold for any number of clips,
 for Cuts panels that are shown, and on entering, scrolling and leaving Edit mode. Closing a preview SHALL
-stop its playback and any loading of its file.
+stop its playback and any loading of its file, and show the clip's thumbnail again.
 
-**One at a time.** Opening a preview SHALL close any other clip's preview, so that Edit mode never holds more
-than one video element. Edit mode SHALL show no movie player: the event's "Movie" section belongs to the read
-view, which Edit mode replaces.
+**One at a time.** The player holds at most one preview, so that Edit mode never holds more than one clip's video
+element. Edit mode SHALL show no movie player: the event's "Movie" section belongs to the read view, which Edit mode
+replaces.
 
-**Keyboard and focus.** Opening a preview SHALL move keyboard focus to its Play control. The preview's
-controls SHALL come in this keyboard order, each reachable and usable by keyboard alone:
-1. **Close**, named "Close the player of <name>"
+**Keyboard and focus.** The player's controls SHALL come in this keyboard order, each reachable and usable by
+keyboard alone:
+1. **Hide player**, named "Hide the player of <name>" (while hidden, the toolbar's **Show player**, "Show player, <name>")
 2. **Play** / **Pause**, which says which it does
 3. the **playhead**, a slider over the clip's length
 4. **Skip cuts**
@@ -3782,14 +3802,13 @@ controls SHALL come in this keyboard order, each reachable and usable by keyboar
 6. **Set To**
 7. **Play original** or **Play preview copy**, present only while the clip has a ready preview copy
 
-Each control SHALL name the clip as its row names it. Close, and Escape pressed while keyboard focus is in the
-preview, SHALL close the preview and move keyboard focus to the control that opened it: the Watch control, or
-the clip's thumbnail. Hiding the Cuts panel SHALL close its preview, leaving keyboard focus on the Cuts
-control. No control of a closed preview SHALL keep focus.
+Each control SHALL name the clip as its row names it. Escape, pressed while keyboard focus is in the player, SHALL
+close the preview, leave keyboard focus on Play, and leave the selection as it is. Hide player SHALL leave keyboard
+focus on Show player, and Show player on Hide player. No control of a closed preview SHALL keep focus.
 
-**Play** SHALL be usable from the moment the preview opens. Pressed before the browser has read the clip, it
-SHALL play the clip once the browser can. A preview opened with Watch, its thumbnail or Try again SHALL announce,
-once, that the clip is ready to play, with its length.
+**Play** SHALL be usable as soon as the player shows a clip. Pressed before the browser has read the clip, it
+SHALL play the clip once the browser can. Opening a preview, or Try again, SHALL announce once that the clip is ready
+to play, with its length.
 
 **The playhead.**
 - Space on it SHALL play or pause the clip, as Play does, and SHALL NOT scroll the page.
@@ -3800,27 +3819,35 @@ once, that the clip is ready to play, with its length.
 - It SHALL say its value to assistive technology as the time and the clip's length, in the format the Cuts
   panel writes times (`0:01.234 of 0:06.02`), and SHALL add when the time lies inside a cut. While the clip
   plays, the value it says SHALL change at most once a second.
-- Until the preview has read the clip's length, the playhead, Set From and Set To SHALL say that they are
-  unavailable and change nothing.
+- Until the preview is open and has read the clip's length, the playhead, Set From and Set To SHALL say that they
+  are unavailable and change nothing.
 
 The preview SHALL show the playhead's time and the clip's length as a readout that says what it is and keeps its
 width, as "Running times are written to a fixed width and say what they are" requires (`Clip 0:01.23 of 0:06.02`).
 The slider's value text stays in the Cuts panel's format, above.
 
 **Sizes and look.**
-- The picture SHALL be shown whole in a box of fixed 16:9 proportions, as wide as the panel allows up to 640
-  CSS pixels and never taller than 360. The box SHALL have that size before the clip's file is read, so that
-  nothing on the page moves when it is.
-- In a window 320 pixels wide or more, the preview SHALL NOT make the page scroll horizontally.
+- The picture SHALL be shown whole in a box of fixed 16:9 proportions, as wide as the bin allows up to 640
+  CSS pixels and never taller than 360 (the side pane's box below is capped lower, and is then wider than 16:9).
+  The box SHALL have that size before the clip's file is read, so that nothing on the page moves when it is.
+- In the bin's side pane (a window 960 pixels wide or more) with a fine pointer, the player SHALL stay within a
+  height budget of about 200 CSS pixels with its preview closed or open, and also with a preview copy ready (so that
+  "Play original" moves nothing): the picture's box is then at most 136 tall, as wide as the pane, and the picture
+  sits whole inside it, with bands at its sides when the box is wider than 16:9. Play with the playhead make one
+  row, and Skip cuts, Set From and Set To the next. The readout and Hide player lie along the top of the picture's
+  box, and the source line and "Play original" along its foot. A coarse pointer or a stacked page keeps its larger
+  rows and boxes.
+- In a window 320 pixels wide or more, the player SHALL NOT make the page scroll horizontally.
 - When the primary pointer is coarse, each of its controls SHALL take a tap anywhere in an area of at least
   44 × 44 CSS pixels around it, reaching no other control. The playhead SHALL take a tap across its whole
   width in an area at least 44 pixels tall.
-- It SHALL follow the page's color scheme in both schemes. No state of it SHALL be shown by color alone.
+- It SHALL follow the page's color scheme in both schemes. No state of it SHALL be shown by color alone: a control
+  that says it is unavailable (Set From, Set To, the playhead) SHALL also have a dashed edge.
 - It SHALL animate nothing. The playhead moves only with playback or a seek.
 
-**What the browser cannot do, by cause.** Each of these SHALL be shown in the preview as a note, never as an
-alert, and announced once through Edit mode's live region. Keyboard focus SHALL stay in the preview, on
-Close when the control that held it went:
+**What the browser cannot do, by cause.** Each of these SHALL be shown in the player as a note, never as an
+alert, and announced once through Edit mode's live region. Keyboard focus SHALL stay in the player, on
+Hide player when the control that held it went:
 - **No sound.** When the original plays and the browser reports that it finds no audio it can play in the clip, the preview SHALL say
   that this browser finds no sound it can play in the clip, and that if a Sony camera recorded it, its sound
   is PCM, which Firefox does not play and Chrome does, and the render keeps it. The note SHALL NOT state as
@@ -3855,27 +3882,35 @@ Close when the control that held it went:
 **Within Edit mode.**
 - Opening, closing, playing and seeking a preview SHALL write nothing and SHALL NOT count as an edit. They
   SHALL bring no save bar and SHALL NOT trigger the unsaved-changes question.
-- While a save is in flight or a move of marked clips is pending, Set From and Set To SHALL say that they are unavailable
-  and change nothing. Play, the playhead, Skip cuts and Close SHALL stay usable.
-- A clip moved within its chapter SHALL keep its preview, playing or not.
-- A clip moved into another chapter, by a drag or by Move marked to…, SHALL keep its preview open at the same time,
-  paused. The reopened preview SHALL take no keyboard focus and SHALL NOT scroll the page. After a drop,
-  keyboard focus is on the clip's handle, and the handle and the row's first line are fully visible, as
-  "Edit mode drags clips between chapters" requires; a row made taller than the view by its preview is
-  scrolled so that its first line is, and the preview under it may lie partly outside the view.
-- Reset SHALL close every preview. Leaving Edit mode SHALL close it.
+- While a save is in flight or a move of several clips is pending, Set From and Set To SHALL say that they are
+  unavailable and change nothing. Play, the playhead, Skip cuts and Hide player SHALL stay usable.
+- A move of the shown clip, within its chapter or into another one, by any means (a drag, Alt and an arrow, Move
+  earlier, Move later, Move to…, Move marked to…), SHALL keep its preview as it was, playing or not, at the same
+  time. The move SHALL NOT move keyboard focus into the player and SHALL NOT scroll the bin to it.
+- Reset SHALL close the preview. Leaving Edit mode SHALL close it.
 
 #### Scenario: Nothing loads until a preview is opened
-- **WHEN** the operator opens Edit mode on `2024-09-15 - Stor dag`, whose root chapter plays 400 clips, scrolls
-  to its end, and shows the Cuts panels of `c0001.mp4`, `c0200.mp4` and `c0400.mp4`
-- **THEN** the page holds no video element and has made no media request
-- **WHEN** the operator presses Watch in the panel of `c0400.mp4`
-- **THEN** its preview opens with keyboard focus on "Play c0400.mp4", nothing plays, and every media request
-  names `c0400.mp4` and carries its modification time as `v`
+- **WHEN** the operator opens Edit mode on `2024-09-15 - Stor dag`, whose root chapter plays 400 clips, each with a
+  ready preview copy so that the track draws them, scrolls to its end, and shows the Cuts panels of `c0001.mp4`,
+  `c0200.mp4` and `c0400.mp4`
+- **THEN** the page holds no clip-preview video element, its one video is the Timeline's, and the only requests made
+  for clip media are the Timeline's own, for the clip its playhead is in (the copy, at `…/proxy?clip=c0001.mp4&v=<the copy's version the detail names>`, with no
+  first-byte request of its own);
+  none names `c0200.mp4` or `c0400.mp4`
+- **WHEN** the operator selects `c0001.mp4`, `c0200.mp4` and then `c0400.mp4` on the track, one after the other
+- **THEN** the player shows `c0400.mp4`'s thumbnail, the page still holds no clip-preview video element, the
+  Timeline's playhead has not moved, and the only requests made for those clips since the selections began are their
+  thumbnails
+- **WHEN** the operator presses the player's Play
+- **THEN** `c0400.mp4` plays from its preview copy, and every request for clip media made since the selections
+  began names `c0400.mp4`: the copy's first byte at `…/proxy?clip=c0400.mp4` with no `v`, then the copy at
+  `…/proxy?clip=c0400.mp4&v=<tag>`, where `<tag>` is the entity tag (ETag) the first answered; none goes to
+  `…/media`, and none carries a modification time as `v` (the original's address does, in a scenario whose clip has
+  no ready preview copy)
 
 #### Scenario: Playing and seeking from the keyboard
-- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, using only the keyboard, the operator shows the
-  Cuts panel of `s1710001.mp4`, presses Watch and then Space
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, using only the keyboard, the operator tabs to the
+  thumbnail of `s1710001.mp4` in the bin, presses Enter and then Space
 - **THEN** the clip plays, and the control with focus is now named "Pause s1710001.mp4"
 - **WHEN** the operator presses Space again, moves to the playhead, and presses Home, then Right three times
 - **THEN** the clip is paused, and the playhead says `0:00.3 of 0:06.02` in a browser that reads the clip's
@@ -3886,39 +3921,56 @@ Close when the control that held it went:
 - **THEN** the clip plays and the page does not scroll; Space again pauses it
 
 #### Scenario: Opening another preview closes the first
-- **WHEN** the preview of `s1710001.mp4` of `2024-06-27 - Grillning med grannar` is playing, and the operator
-  shows the Cuts panel of `s1710002.mp4` and presses its Watch
-- **THEN** the preview of `s1710001.mp4` is closed, its Watch control says that it is not open, and its file
-  is no longer loading. The preview of `s1710002.mp4` is open, with keyboard focus on its Play.
+- **WHEN** the preview of `s1710001.mp4` of `2024-06-27 - Grillning med grannar` is playing in the player, and the
+  operator presses the block of `s1710002.mp4` on the track
+- **THEN** the preview of `s1710001.mp4` is closed and its file is no longer loading. The player shows
+  `s1710002.mp4`'s thumbnail with its Play, nothing plays, and keyboard focus is on the block.
 
 #### Scenario: Closing gives focus back
-- **WHEN** keyboard focus is on the playhead of an open preview and the operator presses Escape
-- **THEN** the preview closes, and keyboard focus is on that clip's Watch control
-- **WHEN** the operator opens it again and presses Close
-- **THEN** the preview closes, and keyboard focus is on the Watch control again
-- **WHEN** the operator opens it again and presses the clip's Cuts control
-- **THEN** the panel and the preview are hidden, and keyboard focus stays on the Cuts control
+- **WHEN** keyboard focus is on the playhead of an open preview of the selected `s1710001.mp4` and the operator
+  presses Escape
+- **THEN** the preview closes, the player shows the clip's thumbnail, keyboard focus is on its Play, and
+  `s1710001.mp4` is still selected
+- **WHEN** the operator opens it again and presses Hide player
+- **THEN** the preview closes, the player is gone from the bin, Show player is in the toolbar's first row, and keyboard focus is on it
+- **WHEN** the operator leaves Edit mode, enters it again and selects a clip
+- **THEN** the player is still collapsed, and Show player brings it back with keyboard focus on Hide player
+
+#### Scenario: A short window starts with the player hidden
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer, with
+  nothing stored for the player
+- **THEN** the player is hidden, Show player is in the toolbar's first row, and the bin shows at least 3 whole rows of the clips its chapters play ("Clip rows visible at the target window")
+- **WHEN** the operator presses Show player
+- **THEN** the player is shown, and it is still shown when Edit mode is opened again in the same window, and in a window as short as 700 pixels
+- **WHEN** the operator presses Hide player and opens Edit mode in a 1440×1300 window
+- **THEN** the player is still hidden, because the choice wins
+- **WHEN** Edit mode opens in a 1440×1300 window with nothing stored for the player
+- **THEN** the player is shown, with its empty placeholder or the clip's closed preview
+- **WHEN** nothing is stored and the window is resized from 1440×1300 to 1440×900 and back
+- **THEN** the player is hidden at 1440×900 and shown again at 1440×1300, and nothing is stored
+- **WHEN** nothing is stored and the window is 900 pixels wide and 700 tall (a stacked page)
+- **THEN** the player is shown
 
 #### Scenario: Watching from the row in one press
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, with every Cuts panel hidden, the operator tabs
   to the thumbnail of `s1710002.mp4`, which is named "Watch s1710002.mp4", and presses Enter
-- **THEN** the clip's Cuts panel is shown with its preview open, keyboard focus is on "Play s1710002.mp4",
-  nothing plays, and no other row changed its size; the rows above it did not move, and the rows after it
-  moved down only by the height that the opened panel added to its row
-- **WHEN** the operator presses Escape
-- **THEN** the preview closes, its panel stays shown, and keyboard focus is on the thumbnail of `s1710002.mp4`
-- **WHEN** the operator presses the thumbnail of `s1710001.mp4` with the pointer
-- **THEN** the preview of `s1710001.mp4` opens, the one of `s1710002.mp4` is closed, and no drag starts: every
-  clip keeps its place
+- **THEN** `s1710002.mp4` is selected, the player shows it with keyboard focus on "Play s1710002.mp4", nothing
+  plays, and no row changed its size or place
+- **WHEN** the player plays `s1710002.mp4` and the operator presses the thumbnail of `s1710001.mp4` with the pointer
+- **THEN** the preview of `s1710002.mp4` is closed, the player shows `s1710001.mp4` with keyboard focus on its Play,
+  and no drag starts: every clip keeps its place
+- **WHEN** the player is hidden and the operator presses the thumbnail of `s1710002.mp4`
+- **THEN** the player is shown again, with `s1710002.mp4` and keyboard focus on its Play
 - **WHEN** in Edit mode on `2024-10-05 - Trasig`, whose thumbnail shows "No preview", the operator presses the
-  thumbnail of `trasig.mp4`
-- **THEN** its preview opens and says that the clip's file is empty
+  thumbnail of `trasig.mp4` and then the player's Play
+- **THEN** the player says that the clip's file is empty
 
 #### Scenario: A portrait clip is shown whole
 - **WHEN** the event `2024-05-19 - Provklipp` holds `h264-720p-rotate90-aac.mp4`, a 1280×720 clip that its
   container turns to portrait, and the operator opens its preview and plays it
-- **THEN** the picture is taller than wide and wholly inside the preview's 16:9 box, with empty bands at its
-  sides. The box is as large as the box of a landscape clip in the same panel would be.
+- **THEN** the picture is taller than wide and wholly inside the preview's picture box, with empty bands at its
+  sides (the box is 16:9 in a stacked page, and in the side pane it is as wide as the pane and at most 136 px tall).
+  The box is as large as the box of a landscape clip in the same player would be.
 
 #### Scenario: No sound for a Sony clip in Firefox
 - **WHEN** in Firefox, which plays no PCM audio, the operator opens the preview of `sony-xavc-1080p25-pcm.mp4`
@@ -3969,19 +4021,17 @@ Close when the control that held it went:
 
 #### Scenario: The preview follows its clip
 - **WHEN** in Edit mode on `2024-08-20 - Två kapitel - Tjörn`, the preview of `s1710001.mp4` is paused at
-  `0:02.5`, and the operator drags that clip into `Kvällen`
-- **THEN** in `Kvällen`, the clip's Cuts panel is shown with its preview open, paused, at `0:02.5`
-- **AND** keyboard focus is on the clip's handle, and the handle and the row's first line lie fully between the
-  bottom of the page header or the chapter's heading and the top of the save bar, also in a window 390 × 844
-  pixels
-- **WHEN** the preview of `Kvällen/s1710002.mp4` is playing and the operator presses that clip's Move down
+  `0:02.5`, and the operator drags that clip's block on the track into `Kvällen`
+- **THEN** the player still shows `s1710001.mp4` with its preview open, paused, at `0:02.5`, and keyboard focus
+  did not move into the player
+- **WHEN** the preview of `Kvällen/s1710002.mp4` is playing and the operator presses Move later in its Clip tab
 - **THEN** it keeps playing
 
 #### Scenario: A pending save leaves playback alone
 - **WHEN** on `2024-06-27 - Grillning med grannar`, with a cut added to `s1710001.mp4` and its preview open, the
   operator presses Save and the service has not answered yet
 - **THEN** Set From and Set To say that they are unavailable, and pressing them changes no field, while Play,
-  the playhead and Close still work and keyboard focus stays on Save
+  the playhead and Hide player still work and keyboard focus stays on Save
 
 #### Scenario: Previewing is not an edit
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator opens the preview of
@@ -3992,21 +4042,21 @@ Close when the control that held it went:
 #### Scenario: Reset closes the preview
 - **WHEN** on `2024-06-27 - Grillning med grannar`, with the title changed and the preview of `s1710001.mp4`
   open, the operator presses Reset
-- **THEN** the preview is closed and its panel is hidden, and the page holds no video element
+- **THEN** the preview is closed, the player shows the clip's thumbnail, and the page holds no video element
 
 #### Scenario: A preview on a phone
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` on a touch screen 320 pixels wide, and the
   operator opens the preview of `Kvällen/s1710002.mp4`
-- **THEN** the page does not scroll horizontally, and the picture's box is 16:9 inside the panel. A tap anywhere
-  in a 44 × 44 pixel area around Close, Play, Skip cuts, Set From and Set To reaches that control and no other.
+- **THEN** the page does not scroll horizontally, and the picture's box is 16:9 inside the player. A tap anywhere
+  in a 44 × 44 pixel area around Hide player, Play, Skip cuts, Set From and Set To reaches that control and no other.
   A tap anywhere along the playhead, up to 22 pixels above or below its centre line, moves it.
 
 #### Scenario: The player's time says what it is and does not move
 - **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar` the operator opens the preview of `s1710001.mp4`
   (6.02 s) and plays it to the end
 - **THEN** the header reads `Clip 0:00.00 of 0:06.02`, then `Clip 0:01.50 of 0:06.02`, and `Clip 0:06.02 of 0:06.02`
-  at the end; the readout's bounding box has the same width in every sample taken during the playthrough, and the
-  close button does not move
+  at the end; the readout's bounding box has the same width in every sample taken during the playthrough, and Hide
+  player does not move
 
 ### Requirement: A clip's preview sets cut times at the playhead and plays the clip as the movie will
 
@@ -4022,7 +4072,8 @@ A cut that runs past the clip's end SHALL be drawn up to that end. The bar SHALL
 panel's cuts and fields at once.
 
 **Set From and Set To.**
-- **Set From** SHALL write the playhead's time into the panel's start field, and **Set To** into its end field.
+- **Set From** SHALL write the playhead's time into the start field of the shown clip's Cuts panel, and **Set To**
+  into its end field, whether that panel is shown or hidden.
   The playhead's time is the time of the file that plays, the original or its preview copy, which are the same.
 - The time SHALL be written to the millisecond, in the format the panel writes times (`0:01.234`, `0:02.5`).
   The panel SHALL read it back as that same time.
@@ -4138,8 +4189,7 @@ probe's duration. A detail duration of `null` SHALL be treated as unknown, never
 
 #### Scenario: The length stays with the clip
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator opens and closes the preview of `s1710001.mp4`,
-  marks that clip and moves it to `Kvällen` with
-  Move marked to…, and adds a cut from `5` to `7` on it there
+  moves that clip to `Kvällen` with Move to… in its Clip tab, and adds a cut from `5` to `7` on it there
 - **THEN** the cut is refused for ending after the clip's length
 
 #### Scenario: The preview's length wins over the service's duration
@@ -4721,7 +4771,8 @@ duration, or a detail that says nothing of a copy. The choice SHALL be made when
 detail alone. For a clip whose state is not ready the page SHALL NOT request a preview copy, and SHALL NOT ask for
 one to be built. The preview SHALL NOT change file by itself, also not after a failure.
 
-**What it shows of that.** The preview SHALL say in words, under the picture, which file plays: "Playing the
+**What it shows of that.** The preview SHALL say in words, under the picture, which file plays (in the bin's side
+pane with a fine pointer, on the foot of the picture's box, where "Play original" also sits): "Playing the
 preview copy" or "Playing the original". When the original plays because the state is stale, because it failed,
 or because a ready state had no usable duration, the words SHALL give that reason ("its preview copy is out of
 date", "its preview copy could not be built", "its preview copy has no usable length"). The words SHALL be
@@ -4828,14 +4879,14 @@ keyboard focus on its Play.
 #### Scenario: The choice follows the clip
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator has pressed Play original on `s1710001.mp4`, and
   drags that clip into `Kvällen`
-- **THEN** its preview reopens in `Kvällen` paused at the same time, playing the original, and its control reads
-  "Play preview copy"
+- **THEN** the player still holds its preview, paused at the same time, playing the original, and its control
+  reads "Play preview copy"
 - **WHEN** the operator closes the preview and opens it again
 - **THEN** it plays the preview copy
 
 #### Scenario: Play original is the last control
 - **WHEN** using only the keyboard, the operator opens the preview of a clip with a ready copy and presses Tab
-  from Close through Play, the playhead, Skip cuts, Set From and Set To
+  from Hide player through Play, the playhead, Skip cuts, Set From and Set To
 - **THEN** the next stop is "Play original of <name>", and it is the last stop of the preview
 
 ### Requirement: The movie player lists the rendered movie's chapters
@@ -5276,8 +5327,9 @@ its file at a clip boundary, SHALL NOT count as starting. A video that is paused
   next scenario
 
 #### Scenario: Edit mode's preview and the Timeline
-- **WHEN** in Edit mode a clip's preview plays and the operator presses Play on the Timeline
-- **THEN** the preview closes as "Edit mode holds one video at a time" says, and only the Timeline plays
+- **WHEN** in Edit mode a clip's preview plays in the bin's player and the operator presses Play on the Timeline
+- **THEN** the preview closes as "Edit mode holds one video at a time" says, the player shows the clip's
+  thumbnail, and only the Timeline plays
 
 ### Requirement: A trim made on the timeline is an edit of the same draft as a cut made in the Cuts panel
 
@@ -6332,12 +6384,14 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
 - **One axis.** Controls in a row SHALL have their vertical centres within 1 CSS pixel of each other, and a text beside them (the Help toggle, the count of marked clips, the label "Move marked to…") SHALL be centred on the same axis. No item SHALL sit higher or lower than
   its neighbours.
 - **Consistent gaps.** The gap between two controls of a group, between two groups and between two rows SHALL each be one value, the same in every row and at every width.
-- **Rows.** The first row SHALL hold the Clips help's toggle and, at its end, the count and Clear marks; the second SHALL hold Rotate marked left and right, then the Move marked to… group (label, picker,
+- **Rows.** The first row SHALL hold the Clips help's toggle and, at its end, the count and Clear marks, and, while the bin's player is hidden, Show player beside the toggle ("Edit mode previews a clip on request"); the second SHALL hold Rotate marked left and right, then the Move marked to… group (label, picker,
   Move) where it fits; the reason SHALL be shown only after Move is pressed while it is unavailable, as one muted line below the controls, starting at the toolbar's left edge, and SHALL go when the marks, the chosen chapter or the save state change the reason. The reason SHALL NOT float beside Move. Marking or unmarking a clip SHALL move no row of the toolbar other than that line.
-- **In the workspace's clip bin from 960 CSS pixels wide.** The side pane is narrow (240 to 320 CSS pixels), so there, with a fine pointer, the toolbar SHALL keep exactly the two rows above and SHALL NOT wrap further. Rotate marked left and right SHALL show an icon only and offer their names as tooltips; the label "Move marked to…" SHALL name the group without being shown; the Clips help toggle SHALL show its icon alone, 32 CSS pixels square, with its name and its tooltip "Help: Clips"; the picker SHALL fill the second row between the Rotate buttons and Move. The toolbar SHALL be at most 88 CSS pixels tall, SHALL stay at the top of the bin while the bin scrolls, and keep its height whether or not a clip is marked. With a coarse pointer the 44 CSS pixel targets stand: the toolbar keeps the icon-only Rotate buttons, but the Move group wraps to a row of its own when the picker would be left under 7rem wide, so that the chosen chapter can always be read, and the toolbar scrolls with the bin rather than staying at its top.
+- **In the workspace's clip bin from 960 CSS pixels wide.** The side pane is narrow (240 to 320 CSS pixels), so there, with a fine pointer, the toolbar SHALL keep exactly the two rows above and SHALL NOT wrap further. Rotate marked left and right SHALL show an icon only and offer their names as tooltips; the label "Move marked to…" SHALL name the group without being shown; the Clips help toggle SHALL show its icon alone, 32 CSS pixels square, with its name and its tooltip "Help: Clips"; Show player, while the player is hidden, SHALL show its icon alone beside it, 32 CSS pixels square, with its name ("Show player", or "Show player, <name>" when a clip is shown) and the tooltip "Show player", and in a bin narrower than 19rem (304 CSS pixels) Clear marks SHALL then show its icon alone, with its name and the tooltip "Clear marks", so that the first row holds Show player, the count and Clear marks without wrapping; the picker SHALL fill the second row between the Rotate buttons and Move. The toolbar SHALL be at most 88 CSS pixels tall, SHALL stay at the top of the bin while the bin scrolls, and keep its height whether or not a clip is marked, and whether or not the player is hidden. With a coarse pointer the 44 CSS pixel targets stand: the toolbar keeps the icon-only Rotate buttons, but the Move group wraps to a row of its own when the picker would be left under 7rem wide, so that the chosen chapter can always be read, and the toolbar scrolls with the bin rather than staying at its top.
 - **Narrow windows.** Outside the side-pane bin (the stacked workspace below 960 CSS pixels, and everywhere off the workspace), where the toolbar does not fit a row, it SHALL wrap by whole groups: the Move group goes on a row of its own with the label above, the picker filling the
   row beside Move; Rotate marked left and right share a row where they fit and otherwise take a row each at the same width. Every wrapped row SHALL keep the one height and the
-  one axis, and nothing SHALL scroll horizontally at 320 CSS pixels.
+  one axis, and nothing SHALL scroll horizontally at 320 CSS pixels. While the bin's player is hidden, on a window narrower than 40rem (640 CSS pixels), Show player and Clear marks SHALL
+  show their icons alone (with their names and the tooltips "Show player" and "Clear marks"), so that the first row holds the help, Show player, the count and Clear marks at 320 CSS
+  pixels and the first mark moves no row.
 - The names, descriptions, `aria-disabled` states and reasons of the controls ("Edit mode moves the marked clips to a chapter") are unchanged.
 
 #### Scenario: Controls in a row share a height and an axis
@@ -6359,6 +6413,16 @@ to… ("Edit mode marks clips to move together", "Edit mode moves the marked cli
   - the toolbar's first row holds the Clips help toggle, "1 clip marked" and Clear marks, and its second row Rotate marked left, Rotate marked right, the chapter picker and Move
   - Rotate marked left and right show icons and offer their names as tooltips, and the group around the picker is named "Move marked to…"
   - the toolbar was at most 88 CSS pixels tall before and after the mark, no clip row moved when the clip was marked, and the toolbar stays at the bin's top as it scrolls
+
+#### Scenario: The bin's toolbar with the player hidden
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window with a fine pointer and the bin's player hidden, `s1710002.mp4` is selected, and the operator marks `Kvällen/s1710003.mp4`
+- **THEN**
+  - the toolbar's first row holds the Clips help toggle and Show player, named "Show player, s1710002.mp4", and after the mark "1 clip marked" and Clear marks; the player has no bar of its own
+  - the toolbar was 88 CSS pixels tall before and after the mark, no clip row moved when the clip was marked, and no control of the first row wrapped, also in a bin 240 CSS pixels wide, where Clear marks shows its icon alone
+
+#### Scenario: The stacked page's toolbar with the player hidden
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 390×800 window and in a 320×800 window, with a fine pointer and with a coarse pointer, and the bin's player is hidden, and the operator marks `Kvällen/s1710002.mp4`
+- **THEN** the toolbar was as tall before the mark as after it, no control of the toolbar moved (only the count and Clear marks appeared in the first row), Show player and Clear marks show icons alone, and the page does not scroll horizontally
 
 #### Scenario: The bin's toolbar with a coarse pointer
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1024×768 window with a coarse pointer
@@ -6684,7 +6748,8 @@ The bin SHALL list every chapter with its clips in compact rows (thumbnail, name
 every action the chapter lists have: reorder and move between chapters by pointer and by keyboard, marks and Move
 marked to…, the New and Missing clips with their actions, and the clips the event ignores. Adding, moving, deleting and
 renaming chapters SHALL be done in the Event tab's Chapters list ("The Event tab lists the event's chapters"); a
-chapter's heading in the bin holds its name and counts and no tool.
+chapter's heading in the bin holds its name and counts and no tool. The bin's player ("Edit mode previews a clip on
+request") SHALL sit above its lists and toolbar and SHALL NOT scroll with them.
 
 From 960 CSS pixels wide the bin SHALL be a side pane as wide as 22% of the window, at least 240 and at most 320 CSS pixels; below 960 the panes stack and it is as wide as the window. With a fine pointer, a row of a clip a chapter plays SHALL take two lines and be at most 70 CSS pixels tall: handle, position, name and the row's tools, then the thumbnail, the length it plays, its status and Cuts. In a bin narrower than about 17rem (272 CSS pixels) Rotate left and right go to the second line, before Cuts; from that width all of the row's tools are on the first line. In the bin, with a fine pointer, a clip's status is shown as its icon alone ("State is never shown by color alone"); with a coarse pointer it keeps its words. In a window from 960 CSS pixels wide, a chapter in the bin SHALL list only the clips it plays and the missing clips the operator removed. The bin SHALL list the clips the event ignores after the last chapter and before Add chapter, under the heading "Ignored clips": each chapter's ignored clips together, in the chapters' order and in the order the chapter lists them, under a caption that names the chapter and says how many it holds ("Main · 1 ignored clip, not played"), each named as that chapter names it, marked as ignored, with no position, handle or control. These clips still count as listed by their chapter. The bin SHALL show no such heading when the event ignores no clip. Below 960 CSS pixels each chapter lists its ignored clips after its other clips. The bin SHALL show no line of its own about new clips: the Clips help says when a new clip joins `reel.yaml`, and the top bar's summary says how many saving adds.
 
@@ -6808,8 +6873,10 @@ next selection SHALL pick the tab again. Each tab's controls SHALL edit the one 
 ### Requirement: The Clip tab edits the selected clip
 
 With one clip selected, the Clip tab SHALL show the clip's name, chapter and position, and its length in the movie,
-and SHALL offer Trim In and Trim Out as typed times, Rotate left and right, **Move to…**, the clip's cuts with remove
-and "+ Cut at playhead", Use frame as poster. A typed trim SHALL be the same draft edit as the track's edge tools.
+and SHALL offer Trim In and Trim Out as typed times, Rotate left and right, **Move earlier** and **Move later**,
+**Move to…**, the clip's cuts with remove and "+ Cut at playhead", Use frame as poster. A typed trim SHALL be the same
+draft edit as the track's edge tools. Which of these a clip offers when the track does not draw it is stated in "The
+Clip tab offers a clip's edits whether or not the track draws it".
 Move to… SHALL be a chapter picker named "Chapter to move <name> to", listing every chapter the draft lists but the
 clip's own, and a Move button that puts the clip at the end of the chosen chapter, the edit a drop on that chapter's
 band makes. While no chapter is chosen, or a save or a move of several clips is pending, Move SHALL be `aria-disabled`
@@ -6892,7 +6959,7 @@ selected clip). Each press SHALL act once.
 
 A workspace shortcut SHALL NOT act, and SHALL leave the key to the browser, in any of these cases:
 - focus is in a text field, a select or editable text;
-- a dialog is open, or focus is inside an open clip preview;
+- a dialog is open, or focus is inside an open clip preview or anywhere in the bin's player, open or not;
 - a drag on the track or in the bin is in progress, or an input-method composition is in progress;
 - the focused control took the key itself;
 - an arrow is pressed on a focused widget that takes arrows (a slider, a radio group, a tab list, a list box, a menu
@@ -6909,6 +6976,11 @@ A workspace shortcut SHALL NOT act, and SHALL leave the key to the browser, in a
 #### Scenario: Space during a trim drag
 - **WHEN** the operator drags a trim handle and presses Space before releasing it
 - **THEN** the Timeline does not start or stop playing
+
+#### Scenario: Space on the player's Play after a click on a row's frame
+- **WHEN** the operator presses the frame of `s1710002.mp4`'s row in the bin with the pointer, which moves keyboard
+  focus to the player's Play, and presses Space
+- **THEN** the player plays `s1710002.mp4`, and the Timeline does not play
 
 ### Requirement: Space presses a control reached by keyboard and plays after a click
 
@@ -7172,3 +7244,44 @@ mode that adds, moves or deletes a chapter ("Edit mode adds, renames, reorders a
 - **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window
 - **THEN** the bin's chapter headings hold each chapter's name and counts and no button, and the bin offers no Add
   chapter
+
+### Requirement: The Clip tab offers a clip's edits whether or not the track draws it
+
+With one clip selected, from the track or the bin, the Clip tab SHALL show its name, chapter, position and status in
+words, also while the track is not open. For a clip a chapter lists it SHALL offer Move earlier and Move later (one
+place, as Move up and Move down; into the next chapter at an edge, but a missing clip's own edge stops it), and if on
+disk Move to… and Rotate; Ignore or Include clip; Remove from reel.yaml or Undo for a missing clip. Trims, cuts and
+poster need the track.
+
+#### Scenario: An ignored clip is included from the Clip tab
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn` the operator presses the bin row of the ignored `s1710004.mp4`
+- **THEN** the Clip tab shows `s1710004.mp4`, "Ignored: not in the movie", and Include clip, and no Trim In/Out,
+  Rotate or cuts
+- **WHEN** the operator presses Include clip
+- **THEN** `s1710004.mp4` is drawn last in `Main`, the top bar counts it, keyboard focus stays in the Clip tab, and
+  Undo says "Undo include of s1710004.mp4"
+
+#### Scenario: A missing clip is removed from the Clip tab
+- **WHEN** on `2024-09-01 - Sommarlov` the operator presses the bin row of the missing `borttagen.mp4`
+- **THEN** the Clip tab shows `borttagen.mp4`, "Clips · clip 3 of 3", "Missing from disk", Move earlier and Remove
+  from reel.yaml
+- **WHEN** the operator presses Remove from reel.yaml
+- **THEN** the clip is removed as the bin's remove control removes it, the Clip tab says that it is removed from
+  reel.yaml when the edits are saved and offers Undo, which has keyboard focus
+
+#### Scenario: Moving a clip while proxies are being prepared
+- **WHEN** Edit mode opens on `2024-06-27 - Grillning med grannar` while its Timeline shows Prepare, and the
+  operator presses the bin row of `s1710001.mp4` and then Move later in the Clip tab
+- **THEN** `s1710001.mp4` is second in its chapter, the move is announced with its position, keyboard focus stays
+  on Move later, and the Clip tab offers no Trim In/Out, cuts or Use frame as poster
+
+#### Scenario: Move later at a chapter's end
+- **WHEN** on `2024-08-20 - Två kapitel - Tjörn` the last clip of `Main` is selected and the operator presses Move
+  later in the Clip tab
+- **THEN** it becomes the first clip of `Kvällen`, as Alt+Right makes it, and the move is announced
+
+#### Scenario: Move earlier and later by touch
+- **WHEN** on a touch screen 390 pixels wide the operator taps the bin row of `s1710003.mp4` and taps Move earlier
+  in the Clip tab
+- **THEN** the clip moves one place earlier, and Move earlier and Move later each take a tap anywhere in a
+  44 × 44 pixel area that reaches no other control
