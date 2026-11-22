@@ -249,6 +249,14 @@ describe('the order and the groups', () => {
   })
 })
 
+describe('a draft that lists a clip the read does not hold', () => {
+  it('throws, naming the clip, rather than leave its row out of the "N of M" places', () => {
+    const fixture = setup([{ name: '', clips: ['a.mp4', 'b.mp4'] }])
+    const draft = { ...fixture.draft, orders: new Map([['r0', ['a.mp4', 'b.mp4', 'ghost.mp4']]]) }
+    assert.throws(() => rowsOf(fixture, draft), /ghost\.mp4/)
+  })
+})
+
 describe('moved', () => {
   const four = () => setup([{ name: '', clips: ['s1', 's2', 's3', 's4'] }])
 
@@ -271,22 +279,22 @@ describe('moved', () => {
   })
 
   it('says only "moved" for a moved clip that is back at its old position', () => {
-    const ids = ['a', 'b', 'c']
+    // d e c a b: c sits at its old index 3, but no run of two keeps it, so it is counted as moved
+    // (whichever of d,e / a,b the ties keep), and its row must not say "was 3".
+    const ids = ['a', 'b', 'c', 'd', 'e']
     const fixture = setup([{ name: '', clips: ids }])
-    const next = ['c', 'b', 'a']
+    const next = ['d', 'e', 'c', 'a', 'b']
     const draft = { ...fixture.draft, orders: new Map([['r0', next]]) }
     const counted = movedSet(keptOriginal(ids, next), next, null)
+    assert.ok(counted.has('c'))
+    assert.equal(ids.indexOf('c'), next.indexOf('c'))
     const rows = rowsOf(fixture, draft)
-    assert.deepEqual(
-      new Set(rows.filter((r) => r.moved !== null).map((r) => r.identity)),
-      counted,
-    )
-    // Whichever of them stays at its index and is counted says "moved", never "was 2".
-    const same = rows.filter((r) => r.moved === 'moved')
-    for (const r of same) {
-      assert.equal(ids.indexOf(r.identity), next.indexOf(r.identity))
+    assert.equal(row(rows, 'c').moved, 'moved')
+    assert.deepEqual(new Set(rows.filter((r) => r.moved !== null).map((r) => r.identity)), counted)
+    // Every other counted clip is elsewhere than it was, and says where it was.
+    for (const r of rows.filter((r) => r.moved !== null && r.identity !== 'c')) {
+      assert.equal(r.moved, `was ${ids.indexOf(r.identity) + 1}`)
     }
-    assert.ok(rows.some((r) => r.moved?.startsWith('was ')))
   })
 
   it('says "from Main" on a clip moved in from another chapter, and "was" on none', () => {

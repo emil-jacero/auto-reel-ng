@@ -210,6 +210,71 @@ describe('the clip information without what it has not got', () => {
   })
 })
 
+describe('the clip information’s Grillning scenario', () => {
+  it('reads as the spec’s words, in the page’s formats', () => {
+    const lines = clipInfo(
+      clip({
+        identity: 's1710002.mp4',
+        size: 26_100_000,
+        mtime: '2024-06-27T18:30:00Z',
+        duration: 6.02,
+      }),
+      facts({ duration: 6.02, width: 1920, height: 1080 }),
+      [cut(1, 2.5, { reason: 'manual' })],
+      'Clips · 2 of 4',
+    )
+    assert.deepEqual(
+      lines.map((line) => [line.label, line.value]),
+      [
+        ['Status', 'Included'],
+        ['Chapter', 'Clips · 2 of 4'],
+        ['Size', '24.9 MiB'],
+        ['Modified', formatInstant('2024-06-27T18:30:00Z')],
+        ['Length', '0:06.02'],
+        ['Kept length', '0:04.52'],
+        ['Frame rate', '25 fps'],
+        ['Picture', 'Landscape, 16:9'],
+        ['Sound', 'AAC'],
+        ['Cut 1', '0:01 to 0:02.5 · 1.5 s · Cut by hand'],
+      ],
+    )
+  })
+
+  it('keeps the exact instant of the Modified line for <time dateTime>', () => {
+    const lines = clipInfo(clip(), null, [], null)
+    assert.equal(lines.find((line) => line.label === 'Modified')?.dateTime, '2025-07-04T18:30:00Z')
+    const unknown = clipInfo(clip({ mtime: null }), null, [], null)
+    assert.equal(unknown.find((line) => line.label === 'Modified')?.dateTime, undefined)
+    assert.ok(lines.filter((line) => line.label !== 'Modified').every((line) => line.dateTime === undefined))
+  })
+})
+
+describe('the clip information of a clip not in the movie', () => {
+  const carrying = [cut(1, 3, { reason: 'manual' }), cut(5, 6)]
+
+  for (const [name, over, word] of [
+    ['an excluded clip', { excluded: true }, 'excluded'],
+    ['an ignored clip', { status: 'ignored' }, 'ignored'],
+    ['an excluded, ignored clip', { excluded: true, status: 'ignored' }, 'ignored'],
+  ] as const) {
+    it(`applies none of the cuts of ${name}: no kept length, no cut lines, no "None"`, () => {
+      const lines = clipInfo(clip(over), null, carrying, null)
+      assert.equal(value(lines, 'Length'), '0:10')
+      assert.equal(value(lines, 'Kept length'), undefined)
+      assert.deepEqual(
+        lines.filter((line) => line.section === 'cuts'),
+        [{ section: 'cuts', label: 'Cuts', value: `Not applied: the clip is ${word}` }],
+      )
+    })
+  }
+
+  it('still lists the cuts of an included clip, and of a missing one', () => {
+    assert.equal(value(clipInfo(clip(), null, carrying, null), 'Kept length'), '0:07')
+    const missing = clipInfo(clip({ status: 'missing', size: null, mtime: null, duration: null }), null, carrying, null)
+    assert.equal(missing.filter((line) => line.section === 'cuts').length, 2)
+  })
+})
+
 describe('the clip information of a missing clip', () => {
   const sommarlov = clip({
     identity: 'borttagen.mp4',
