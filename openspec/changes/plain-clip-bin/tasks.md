@@ -44,7 +44,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - "A clip's preview sets cut times at the playhead and plays the clip as the movie will";
   - "A trim made on the timeline is an edit of the same draft as a cut made in the Cuts panel";
   - a typed cut on a clip with no ready proxy.
-- [ ] 2.4 `ClipInfo` and its Hide information preference (design D3). Verify in Playwright with the scenarios of "The
+- [x] 2.4 `ClipInfo` and its Hide information preference (design D3). Verify in Playwright with the scenarios of "The
   bin shows what the page knows of the shown clip". Check the request log: selecting clips makes thumbnail requests
   only.
 - [ ] 2.5 Delete the old bin (design D6): the components and modules, the marks' actions and words, and the Clips help

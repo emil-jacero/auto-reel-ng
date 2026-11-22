@@ -102,6 +102,7 @@ import {
   stepWords as clipStepWords,
 } from './clipInspector.ts'
 import { ClipBin } from './ClipBin'
+import { ClipInfo } from './ClipInfo'
 import type { BinHandlers } from './ClipBin'
 import { binRows } from './binList.ts'
 import { stepMove } from './stepMove.ts'
@@ -3722,6 +3723,21 @@ export function EventEditor({
             />
           )}
           </>,
+          // The bin's information: what the page knows of the clip the player shows, under the list.
+          info: <>
+          {detail !== null && (
+            <ClipInfo
+              selection={cards.selection}
+              clips={clips}
+              rows={binRowsNow}
+              nameOf={(identity) =>
+                nameNow(ready.draft, ready.baseline.original, identity, ignoredOf, removedByChapter)
+              }
+              cutsOf={(identity) => cutsOf(ready.baseline.cuts, ready.draft.cuts, identity)}
+              turnOf={(identity) => draftTurns.get(identity) ?? 0}
+            />
+          )}
+          </>,
           saveBar: <>
           {/*
             In the page from the moment Edit mode is ready, `hidden` while there is nothing to
@@ -3893,6 +3909,7 @@ export function EventEditor({
               {parts.timeline}
               {parts.player}
               {parts.bin}
+              {parts.info}
               {parts.saveBar}
             </>
           )}
@@ -3991,6 +4008,7 @@ export function EventEditor({
             </>}
           player={parts?.player ?? null}
           bin={parts?.bin ?? null}
+          info={parts?.info ?? null}
           clip={clipTab}
           clipSlot={clipSlot}
           event={
