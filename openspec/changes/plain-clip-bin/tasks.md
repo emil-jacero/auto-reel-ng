@@ -15,7 +15,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 1. Rules (web/src/edit)
 
-- [ ] 1.1 Add `binList.ts` (design D1). Verify with `binList.test.ts`. It must cover:
+- [x] 1.1 Add `binList.ts` (design D1). Verify with `binList.test.ts`. It must cover:
   - the order and the groups of Tjörn and of Sommarlov, before and after a removal;
   - "was N" and "from X" after a move within a chapter and after a move across chapters;
   - names of clips from another folder;
