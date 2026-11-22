@@ -14,6 +14,16 @@
     border-block-start: 1px solid var(--border);
     background: var(--surface);
     font-size: var(--text-sm);
+    container-type: inline-size;
+  }
+
+  /* A narrow bin (about 1100 px wide windows) has no room for the clip's name beside "Information"
+     and Hide information: it would shrink to a clipped fragment, so the name goes (the row and the
+     Clip tab name the clip). */
+  @container (width < 18rem) {
+    .bin-info-title > .bin-info-clip {
+      display: none;
+    }
   }
 
   @media (width >= 960px) {
