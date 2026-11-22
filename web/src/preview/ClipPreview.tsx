@@ -41,9 +41,13 @@ import {
   downloadWords,
   emptyWords,
   formatWords,
+  frameLookahead,
+  frameSeeked,
+  frameTick,
   goneWords,
   hidePlayerName,
   noPictureWords,
+  newFrameClock,
   noSoundWords,
   offersSkip,
   playFrom,
@@ -55,7 +59,6 @@ import {
   seekKey,
   setName,
   skipAt,
-  skipLookahead,
   skipName,
   skipSpans,
   timeCells,
@@ -586,33 +589,26 @@ export const ClipPreview = memo(function ClipPreview({
   }, [phase, src, playsCopy, name, mtime, readOnly, announce])
 
   // While playing: the head follows each presented frame, and with Skip cuts on, the
-  // frame loop jumps over a cut two frame intervals ahead (design, "Skip cuts").
+  // frame loop jumps over a cut that the next callback's frame would land in (design,
+  // "Skip cuts"; the lookahead is `frameLookahead`).
   useEffect(() => {
     const video = videoRef.current
     if (!playing || video === null) {
       return
     }
     let handle = 0
-    let last: number | null = null
-    let step = 0
-    // The clip's frame interval: the shortest step seen. A browser that drops the frame
-    // just before a cut would present the cut's first frame next, so the loop looks two
-    // intervals ahead: at most one kept frame before a cut goes unshown, never a cut frame.
-    let interval = Infinity
-    // The widest step between two callbacks since the last seek (see skipLookahead).
-    let widest = 0
+    // The callback cadence (`FrameClock`): a browser may call back only about every second
+    // frame, and off its cycle, so the loop looks the gap to the next callback ahead. The
+    // cost is the kept frames just before a cut: one on every-frame callbacks, one
+    // callback gap otherwise, never a cut frame (see `frameLookahead` for the bound).
+    let clock = newFrameClock()
     // The last target sought: never sought again before playback leaves it, so a
     // frame that straddles a cut's end cannot stall playback.
     let sought: number | null = null
     let spoken = -1
     const tick = (_now: number, frame: VideoFrameCallbackMetadata) => {
       const at = Math.round(frame.mediaTime * 1000)
-      if (last !== null && at > last) {
-        step = at - last
-        interval = Math.min(interval, step)
-        widest = Math.max(widest, step)
-      }
-      last = at
+      clock = frameTick(clock, at, frame.presentedFrames)
       setAtMs(at)
       if (Math.floor(at / 1000) !== spoken) {
         spoken = Math.floor(at / 1000)
@@ -621,7 +617,7 @@ export const ClipPreview = memo(function ClipPreview({
       const { skip: skipping, spans: skips, lengthMs: total } = loop.current
       const action =
         skipping && total !== null
-          ? skipAt(skips, at, skipLookahead(step, interval, widest), total)
+          ? skipAt(skips, at, frameLookahead(clock), total)
           : null
       if (action !== null && 'stop' in action) {
         video.pause()
@@ -637,10 +633,9 @@ export const ClipPreview = memo(function ClipPreview({
       handle = video.requestVideoFrameCallback(tick)
     }
     // Any seek (the loop's own, a key, the pointer): the next frame's step is not a
-    // frame step, so the last one is kept.
+    // frame step, so the clock keeps what it knows and counts no step from the seek.
     const onSeeking = () => {
-      last = null
-      widest = 0
+      clock = frameSeeked(clock)
     }
     video.addEventListener('seeking', onSeeking)
     handle = video.requestVideoFrameCallback(tick)
