@@ -651,10 +651,12 @@ dependency budget.** Rationale and rules:
   path) was the deciding maintenance cost.
 - **The dependency budget is the real maintenance lever, not the framework** (Principle VII). GUI v1 ships
   `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `typescript`, and one drag-and-drop library, plus
-  `openapi-typescript` as a dev dependency. The drag-and-drop library is the legacy `@dnd-kit` line
+  `openapi-typescript` as a dev dependency. The drag-and-drop library was the legacy `@dnd-kit` line
   (`@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`; `event-edit-screen`): keyboard sorting and
-  screen-reader announcements built in, and it works under React's StrictMode. Its successor
-  `@dnd-kit/react` replaces it once that reaches 1.0 or its StrictMode issue #2116 is fixed. **No
+  screen-reader announcements built in, and it works under React's StrictMode. **It left with `plain-clip-bin`
+  (D-28):** the bin it sorted is a plain list, the track drags with its own pointer code, and the Clip tab's Move
+  earlier, Move later and Move to… are the keyboard path, so nothing imports it. The client's dependencies are
+  React and React DOM, and a library is added again only when a slice demonstrably needs one. **No
   component library, no CSS framework, no router, and no state-management or data-fetching library at v1**
   — each is added only when a slice demonstrably needs it, justified in that change's proposal.
   Component-library majors are the usual source of frontend bit rot; plain CSS has none.
@@ -975,6 +977,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     player that shows the selected clip, loads on Play only and hides to a one-line bar; the Clip tab is built by the
     editor for any selected clip (move earlier and later, Include, Ignore, Remove), with the Timeline adding only its
     track-only part; no API, engine or `RENDER_GRAPH_VERSION` change.
+    **Slice 11 is built** (`plain-clip-bin`, web only; D-28): the plain clip list is built, the last of the four changes
+    that make it. The bin is one plain list of every clip (the player above it, the clip's information under it), selected
+    as the track is and opening the clip menu; the marks, the chapter sections, the handles and the row buttons are
+    gone, and `@dnd-kit` left with them; no API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -2013,8 +2019,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     notifications, sticky headings and the scroll padding clear it.
   - **The panes.** A grid of bin 240 px · viewer · inspector 340 px over a Timeline of `minmax(280px, 38vh)`, each
     pane scrolling on its own (`[data-ws-scroll]`, which focus-in-view, drops and Page Up/Down measure against).
-    The bin is the chapter lists (`ChapterDrag` / `ClipOrderList`) in a compact row variant, every list action and
-    the keyboard sensor kept, rows off screen skipped as on the stacked page. The Timeline is split over one state
+    The bin was the chapter lists (`ChapterDrag` / `ClipOrderList`) in a compact row variant, every list action and
+    the keyboard sensor kept, rows off screen skipped as on the stacked page (since `plain-clip-bin` it is a plain
+    list, below). The Timeline is split over one state
     (`useTimeline` → viewer, track, cut panel; one `<video>`): the viewer pane takes the picture and the transport
     (Previous / Next clip added), the bottom pane the track, the inspector's Cut tab the cut panel, by portals.
     The inspector's Event tab holds Details, Poster and a button that opens the card editor on "All title cards in
@@ -2022,10 +2029,13 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     slice 2, below). Below 960 px the panes stack (top,
     viewer, Timeline, inspector, bin) and the page scrolls.
   - **The bin's width** (`compact-bin-tools`): `clamp(240px, 22vw, 320px)`, not a fixed 240 px (282 px at 1280, 317 px
-    at 1440), with two-line rows and a two-row sticky marks line, so Tjörn shows 3 whole rows at 1280×720 and 4 at
-    1440×900 (played rows: from 960 px the ignored clips are listed together after the chapters).
-  - **No List view.** There is one layout, not a List/Workspace switch: the bin *is* the lists, so keyboard and
-    screen-reader reordering need no second screen, and there is no second layout to keep in step.
+    at 1440). It then held two-line rows and a two-row sticky marks line, so Tjörn showed 3 whole rows at 1280×720 and 4
+    at 1440×900; the marks line and those counts went with `plain-clip-bin` (below).
+  - **No List view, still one layout.** There is one layout, not a List/Workspace switch, and no second layout to keep
+    in step. Slice 1 kept it by making the bin the chapter lists, so keyboard and screen-reader reordering needed no
+    second screen. `plain-clip-bin` (slice 11, below) amends the reason, not the rule: the bin is **one plain list**
+    of every clip, and the non-pointer reorder path is the Clip tab's Move earlier, Move later and Move to…, with
+    Alt+arrows on the track.
   - **Not here (slice 1):** an inspector that follows the selection, a Clip tab, a docked card editor (built in
     slice 2, below), dragging on the track (`track-drag-edit`), Undo (`editor-undo`). No API, engine or `RENDER_GRAPH_VERSION`
     change; no new dependency or token. Gates (task 4.1 of the change): the zoom-slider drag at Chrome 4x on 400
@@ -2117,7 +2127,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     release lands the run where `moveGroup` puts it, over the bin ignores it, and Escape or a right-click cancels. A
     drag of an unselected block is today's one-clip drag. Measured in Chromium on a production build: Shift+click over
     400 clips paints in 68 ms (gate 100 ms) and a 50-clip drop costs 30 ms more than a one-clip drop (gate 150 ms).
-  - **The marks stay until `plain-clip-bin`.** The checkbox marks, Move marked to…, Rotate marked and the bin's group
+  - **The marks stayed until `plain-clip-bin` (slice 11).** The checkbox marks, Move marked to…, Rotate marked and the bin's group
     drag are untouched, and the two sets share no state: a drop only unmarks a clip it moved, as before. Touch has no
     Ctrl or Shift, so the marks remain the way to move several clips by touch until the plain list replaces them, which
     will build its keyboard on this selection. The lock words name no marks, so they stay true then. The Keyboard
@@ -2158,6 +2168,48 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     change; no new dependency or draft action.
   - **Not here (slice 2):** "Ignore clip" (moved 2026-11-15 to `track-drag-edit`, which builds the draft's ignore
     edit), dragging on the track, Undo. No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
+  - **The bin is one plain list (change `plain-clip-bin`, slice 11; amends "No List view" and slice 1's "the bin is the
+    chapter lists").** On 2026-11-18 the operator asked for a plain list of all clips, with a small player above it
+    that can be hidden, the clip menu on right-click, and the clip's information below. Each job of the old bin
+    had by then another home: groups are the selection (`clip-multi-select`), the chapter tools are in the Event tab
+    (`chapters-in-inspector`), and the player and the Clip tab's Move earlier, Move later and Move to… are for
+    keyboard, touch and screen readers (`clip-tab-and-player`).
+    - **The list** (`edit/ClipBin.tsx`, rows and words in `edit/binList.ts`, pure): a `listbox` of every clip in play
+      order, then "Ignored · N clips, not played", then "Removed from reel.yaml when you save · N clips". A row is
+      the frame, the name, "Kvällen · 2 of 3" (with "· was 4" or "· from Main" after a move), the kept length and the
+      status icon, with "typed" while a typed cut waits, and holds no control. One Tab stop; Up, Down, Home and End
+      move focus, Enter selects, Ctrl/Cmd+Enter adds and Shift+Enter selects a range, as on the track; a press on
+      a frame also focuses the player's Play. Right-click, Shift+F10 or the Menu key opens the clip menu, which gains
+      Include clip for an ignored clip and Remove from reel.yaml or Undo remove for a missing one (the new draft
+      action `include-many` mirrors `ignore-many`; the Clip tab's group view gains Include clips). Only an
+      ignored clip's row drags, onto the track to include it. Rows are 40 px with a fine pointer and 48 px with a
+      coarse one, and keep `content-visibility: auto`; Tjörn shows all 5 rows at 1280×720 with the player and the
+      information hidden, and at least 1 at 1440×900 with both shown.
+    - **Gone, each with a home.** Chapter sections and headings (the Chapters list), handles, keyboard lift and the
+      bin's drag (the track and the Clip tab), Move up and Move down (Move earlier and Move later), **the marks** (the
+      checkboxes, the marks line, Rotate marked, Move marked to…, the group drag and the `mark`, `marks-clear`,
+      `marked-move` and `group-drop` actions: the selection and the Clip tab's group view), the row buttons Rotate,
+      Include and Remove (the Clip tab and the menu), and the per-row Cuts panels. The marks were never saved. Several
+      clips are selected with Ctrl, Cmd or Shift, so a finger moves clips one at a time.
+    - **The Cuts panel is in the Clip tab** (`edit/ClipInspector.tsx`), merged with the track part's cut list: typed
+      start and end, Remove and Undo and the "typed" rule stay, with or without the track, and while the track draws the
+      clip it also has "+ Cut at playhead" and each cut's Edit. The `CutPanels` store and the `cut-typed` action are
+      unchanged, and Set From and Set To fill the panel's fields.
+    - **The information** (`edit/ClipInfo.tsx`, words in `edit/clipInfo.ts`, pure) covers the player's clip, makes no
+      request and says what waits for a proxy. From the event read: status, chapter and position, file size,
+      modification time, length and kept length. From a ready proxy's facts: frame rate (and whether it varies),
+      picture orientation and aspect ratio, the container's rotation and the sound's codec. Then the clip's cuts, read
+      only. **There is no source resolution, video codec, bitrate or capture date:** the client has none of them. The
+      proxy facts' width and height are the proxy's (540 on the short side), so the page names orientation and ratio
+      and never "540 × 960" (Principle I). Adding them needs the proxy job to record more of its probe
+      (`clip-proxies`) or a probe-backed read, which would break the probe-free detail (`ClipOut`): a separate change.
+      Hide information collapses the panel (`auto-reel:bin-info`, kept in `localStorage` like the player's choice);
+      the panel is capped at 30 % of the bin's height and scrolls within itself. In a short window the bin is small
+      (about 390 px at 1280×720), so the player and the information give the room back when hidden.
+    - **Deleted:** `ChapterDrag.tsx`, `ClipOrderList.tsx`, `marks.ts`, `wideBin.ts` and the marks line. **`@dnd-kit`
+      left `package.json`** with the bin (§4.10, D-8). No API, engine, `reel.yaml` or `config.yaml` schema change, no
+      Alembic migration, no change to rendered output, the staleness fingerprint or `RENDER_GRAPH_VERSION`; no new
+      dependency. Selecting several clips by touch and a screen-reader check with Orca (task 3.1b) are open.
 - **D-27 — Analysis is a job** (2026-10-05, change `analysis-job`). The user asked what "Not analyzed" means and why
   it could not be triggered from the web, and chose automatic analysis in the background, a Re-analyze button and
   "Analyze all". The inline `auto-reel analyze` could not be a job: its passes were blocking (no cancel, no
