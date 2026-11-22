@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { DRAG_SLOP, pastSlop, pointerDrags, rowDrags } from './binDrag.ts'
+import { DRAG_SLOP, dragsGroup, pastSlop, pointerDrags, rowDrags } from './binDrag.ts'
 
 describe('pastSlop', () => {
   it('is a click up to the slop and a drag beyond it', () => {
@@ -29,5 +29,15 @@ describe('pointerDrags', () => {
     assert.equal(pointerDrags('mouse'), true)
     assert.equal(pointerDrags('pen'), true)
     assert.equal(pointerDrags('touch'), false)
+  })
+})
+
+describe('dragsGroup', () => {
+  it('is a group only for a row of a selection of several', () => {
+    assert.equal(dragsGroup(new Set(['a', 'b']), 'a'), true)
+    assert.equal(dragsGroup(new Set(['a', 'b']), 'b'), true)
+    assert.equal(dragsGroup(new Set(['a']), 'a'), false)
+    assert.equal(dragsGroup(new Set<string>(), 'a'), false)
+    assert.equal(dragsGroup(new Set(['a', 'b']), 'c'), false)
   })
 })
