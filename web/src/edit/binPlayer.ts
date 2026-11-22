@@ -34,8 +34,8 @@ export function shownClip(
 }
 
 /**
- * A clip with a Cuts control and panel: in the movie (not excluded) and active or new. The clip
- * rows draw their Cuts control by this rule, and the player offers Set From and Set To by it, so
+ * A clip with a Cuts panel: in the movie (not excluded) and active or new. The Clip
+ * tab shows its Cuts panel by this rule, and the player offers Set From and Set To by it, so
  * a time it writes always lands in a panel the operator can reach. An ignored clip plays, but is
  * read-only in the player.
  */
