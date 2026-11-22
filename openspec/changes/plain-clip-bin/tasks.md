@@ -21,7 +21,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   - names of clips from another folder;
   - the `typed` flag;
   - a 400-clip event.
-- [ ] 1.2 Add `clipInfo.ts` (design D3). Verify with `clipInfo.test.ts`. It must cover:
+- [x] 1.2 Add `clipInfo.ts` (design D3). Verify with `clipInfo.test.ts`. It must cover:
   - frame rates 25/1, 30000/1001 and a variable one;
   - the ratios 1920×1080 → 16:9, 540×960 → 9:16, 1440×1080 → 4:3, and an odd one ("about …");
   - rotation 90, and the codecs AAC, `pcm_s16le` and none;

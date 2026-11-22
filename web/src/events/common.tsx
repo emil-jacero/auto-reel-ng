@@ -13,6 +13,7 @@ import { CLIP_STATUS_LOOK, EXCLUDED_LOOK, VERDICT_LOOK } from './tones'
 /** Helpers both event screens share. */
 
 export { clipNames, fileName, folderName, namesIn, plural } from './names'
+export { formatBytes } from '../format'
 
 /** The failure sentences both screens use, so the same cause reads the same. */
 export const DATABASE_CAUSE = "The service can't reach its database."
@@ -34,22 +35,6 @@ export function ClipName({ name }: { name: string }) {
       {name.slice(cut)}
     </>
   )
-}
-
-const BYTE_UNITS = ['KiB', 'MiB', 'GiB', 'TiB']
-
-/** A byte count, 1024-based: whole bytes below 1 KiB, one decimal from KiB up. */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-  let value = bytes / 1024
-  let unit = 0
-  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
-    value /= 1024
-    unit += 1
-  }
-  return `${value.toFixed(1)} ${BYTE_UNITS[unit]}`
 }
 
 /**
