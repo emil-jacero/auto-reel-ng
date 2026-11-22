@@ -1741,9 +1741,9 @@ export function EventEditor({
     retried.current = null
   }, [state, announce])
 
-  // Each clip's cut panel, shown or not and its fields as typed, by identity: here, not
-  // in its row, which Move marked to… mounts anew in another chapter. Reset empties it, and
-  // closes every clip preview (one open at a time, `preview/previews.ts`).
+  // Each clip's cut panel, its fields as typed, by identity: here, not in the Clip tab's
+  // panel, which unmounts when another clip is selected. Reset empties it, and closes every
+  // clip preview (one open at a time, `preview/previews.ts`).
   const [cutPanels] = useState(createCutPanels)
   // What the Timeline lends the Clip tab's Cuts panel while its track draws the clip.
   const [trackCuts] = useState(createTrackCuts)
