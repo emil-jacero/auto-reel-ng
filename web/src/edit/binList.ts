@@ -41,7 +41,13 @@ export type BinRow = {
    */
   moved: string | null
   status: ClipStatusWords
-  /** What the clip plays, in ms: its duration less its live cuts, once. Null when the length is unknown. */
+  /**
+   * What the clip plays, in ms: its duration less its live cuts, once; the whole duration for an
+   * ignored, excluded or removed clip, whose cuts do not apply. Null when the read gives no
+   * duration. Only the read's: a ready proxy's facts exist for the shown clip alone (nothing is
+   * requested for the others), so the information, which falls back to them, can show a length
+   * for the shown clip where its row shows none.
+   */
   keptMs: number | null
   /** A cut was typed in the clip's Cuts panel and not added: Save holds. */
   typed: boolean
@@ -73,6 +79,15 @@ function listedStatus(clip: Clip): ClipStatusWords {
     return 'Missing'
   }
   return clip.excluded ? 'Excluded' : 'Included'
+}
+
+/** The clip the page read for an identity the draft lists: a draft naming one it has not read is a bug. */
+function readClip(clips: ReadonlyMap<string, Clip>, identity: string): Clip {
+  const clip = clips.get(identity)
+  if (clip === undefined) {
+    throw new Error(`The draft lists the clip ${identity}, which the event read does not hold.`)
+  }
+  return clip
 }
 
 /** A length in ms from a duration in seconds less the cuts; null for no length (never 0). */
@@ -159,10 +174,7 @@ export function binRows(
     const was = new Map((baseline.original.get(chapter.key) ?? []).map((id, at) => [id, at + 1]))
     const moved = movedIn.get(chapter.key)
     order.forEach((identity, at) => {
-      const clip = clips.get(identity)
-      if (clip === undefined) {
-        return
-      }
+      const clip = readClip(clips, identity)
       const home = origin.get(identity)
       const wasAt = moved?.has(identity) === true ? was.get(identity) : undefined
       let movedWords: string | null = null
@@ -197,10 +209,7 @@ export function binRows(
       removed.get(chapter.key) ?? [],
     )
     for (const identity of ignored.get(chapter.key) ?? []) {
-      const clip = clips.get(identity)
-      if (clip === undefined) {
-        continue
-      }
+      const clip = readClip(clips, identity)
       rows.push({
         identity,
         name: nameOf(identity),
@@ -229,10 +238,7 @@ export function binRows(
       gone,
     )
     for (const identity of gone) {
-      const clip = clips.get(identity)
-      if (clip === undefined) {
-        continue
-      }
+      const clip = readClip(clips, identity)
       rows.push({
         identity,
         name: nameOf(identity),

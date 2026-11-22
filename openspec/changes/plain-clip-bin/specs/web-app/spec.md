@@ -76,11 +76,15 @@ picture's orientation and aspect ratio, its container's rotation and its audio c
 SHALL request nothing, SHALL NOT state what the page does not know, and SHALL be hidden and shown as the player is.
 
 #### Scenario: A clip with a ready proxy
-- **WHEN** `s1710002.mp4` of `2024-06-27 - Grillning med grannar` (24.9 MB, 25 fps, 1920×1080 with AAC sound, its
+- **WHEN** `s1710002.mp4` of `2024-06-27 - Grillning med grannar` (24.9 MiB, 25 fps, 1920×1080 with AAC sound, its
   proxy ready, one cut from 1.0 to 2.5 s) is selected
-- **THEN** the information reads its name, "Included", "Clips · 2 of 4", "24.9 MB", its modification time in the
-  page's time format, "Length 0:06.02 · in the movie 0:04.52", "25 fps", "Landscape, 16:9", "Sound: AAC", and the
-  cut "1 · 0:01–0:02.5 · 1.5 s · Cut by hand"
+- **THEN** the information reads its name, "Included", "Clips · 2 of 4", "24.9 MiB", its modification time in the
+  page's time format, "Length 0:06.02", "Kept length 0:04.52", "25 fps", "Landscape, 16:9", "Sound AAC", and the
+  cut "Cut 1 0:01 to 0:02.5 · 1.5 s · Cut by hand"
+
+#### Scenario: An excluded or ignored clip's cuts do not apply
+- **WHEN** an excluded clip, or an ignored one, that `reel.yaml` gives a cut is selected
+- **THEN** the information gives its length, no kept length and no cut, and says that its cuts are not applied
 
 #### Scenario: A phone clip turned by its container
 - **WHEN** a selected clip's proxy facts give a picture 540 × 960 and a rotation of 90

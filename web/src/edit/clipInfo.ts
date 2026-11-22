@@ -26,8 +26,11 @@ export type ProxyFacts = components['schemas']['ProxyFactsOut']
 /** Where a line belongs in the panel: the event read, the proxy's facts, or the clip's cuts. */
 export type InfoSection = 'read' | 'proxy' | 'cuts'
 
-/** One line of the panel: a label and its value, both plain words. */
-export type InfoLine = { section: InfoSection; label: string; value: string }
+/**
+ * One line of the panel: a label and its value, both plain words. `dateTime` is the exact instant
+ * a time line was formatted from, for `<time dateTime>`: only the Modified line carries one.
+ */
+export type InfoLine = { section: InfoSection; label: string; value: string; dateTime?: string }
 
 /** A value the page does not have. */
 export const UNKNOWN = 'unknown'
@@ -159,10 +162,15 @@ function lengthWords(seconds: number | null): string {
  * - `proxy`: frame rate, picture, container rotation and sound from the ready proxy's `facts`, or
  *   one line saying they wait for the proxy (none for a missing clip: no proxy will be prepared);
  * - `cuts`: each cut the save keeps (removed ones left out), numbered as the Cuts panel
- *   numbers them, with its span, length and reason in its formats, or "None".
+ *   numbers them, with its span, length and reason in its formats, or "None"; one line saying the
+ *   cuts are not applied when the clip is excluded or ignored.
  *
  * `clip` is the clip as the draft stands: pass it through `withIgnoreStatus`, so a clip ignored
  * or included in this Edit mode says what its bin row says. `status` is read from it as given.
+ *
+ * An excluded or an ignored clip is not in the movie, so `cuts` do not apply to it (the same rule
+ * as its bin row's length): no kept length and no cut lines, and its `cuts` section says so in
+ * one line, never "None".
  */
 export function clipInfo(
   clip: Clip,
@@ -174,6 +182,9 @@ export function clipInfo(
   const lines: InfoLine[] = []
   const read = (label: string, value: string) => lines.push({ section: 'read', label, value })
   const missing = clip.status === 'missing'
+  const ignored = clip.status === 'ignored'
+  const inMovie = !clip.excluded && !ignored
+  const kept = inMovie ? cuts : []
 
   read('Status', statusWords(clip))
   if (place !== null) {
@@ -181,11 +192,20 @@ export function clipInfo(
   }
   if (!missing) {
     read('Size', clip.size == null ? UNKNOWN : formatBytes(clip.size))
-    read('Modified', clip.mtime == null ? UNKNOWN : formatInstant(clip.mtime))
+    if (clip.mtime == null) {
+      read('Modified', UNKNOWN)
+    } else {
+      lines.push({
+        section: 'read',
+        label: 'Modified',
+        value: formatInstant(clip.mtime),
+        dateTime: clip.mtime,
+      })
+    }
     const seconds = clipSeconds(clip, facts)
     read('Length', lengthWords(seconds))
-    if (keptCuts(cuts).length > 0) {
-      read('Kept length', lengthWords(keptSeconds(seconds, cuts)))
+    if (keptCuts(kept).length > 0) {
+      read('Kept length', lengthWords(keptSeconds(seconds, kept)))
     }
   }
   if (turn !== 0) {
@@ -207,7 +227,7 @@ export function clipInfo(
     proxy('Sound', soundWords(facts.audio_codec))
   }
 
-  cuts.forEach((cut, index) => {
+  kept.forEach((cut, index) => {
     if (cut.removed) {
       return
     }
@@ -218,7 +238,13 @@ export function clipInfo(
       value: `${spanWords(cut)} · ${formatLength(cut.out - cut.in)}${reason}`,
     })
   })
-  if (keptCuts(cuts).length === 0) {
+  if (!inMovie) {
+    lines.push({
+      section: 'cuts',
+      label: 'Cuts',
+      value: `Not applied: the clip is ${ignored ? 'ignored' : 'excluded'}`,
+    })
+  } else if (keptCuts(cuts).length === 0) {
     lines.push({ section: 'cuts', label: 'Cuts', value: 'None' })
   }
   return lines
