@@ -3,14 +3,14 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
 /*
- * Edit mode's clip list is cheap to repaint while the Timeline zooms, scrubs and plays
- * (edit-list-paint-cost): off-screen rows skip drawing with a size close to a drawn row's,
- * and the list is one composited layer. These rules are CSS, so their contract is read
- * from the stylesheets; what they do in a browser is measured with Playwright.
+ * The bin's list is cheap to repaint while the Timeline zooms, scrubs and plays
+ * (edit-list-paint-cost, `plain-clip-bin` D2): off-screen rows skip drawing, each keeping the block
+ * size of a drawn row. These rules are CSS, so their contract is read from the stylesheets; what
+ * they do in a browser is measured with Playwright.
  */
 
 const src = new URL('../', import.meta.url)
-const editCss = readFileSync(new URL('edit/edit.css', src), 'utf8')
+const binCss = readFileSync(new URL('edit/clipBin.css', src), 'utf8')
 
 type Rule = { at: string[]; selector: string; body: string }
 
@@ -69,108 +69,37 @@ function sourceFiles(dir: URL): URL[] {
   )
 }
 
-describe('the clip rows skip drawing off screen', () => {
-  const all = rules(editCss)
+describe('the bin rows skip drawing off screen', () => {
+  const all = rules(binCss)
+  const rows = all.filter((rule) => rule.selector === '.bin-row')
   const skipping = all.filter((rule) => declaration(rule.body, 'content-visibility') === 'auto')
-  const COMPACT = '.edit-chapter[data-compact]'
-  const page = skipping.filter((rule) => !rule.at.includes(COMPACT))
-  const bin = skipping.filter((rule) => rule.at.includes(COMPACT))
 
-  it('each row of a clip list has content-visibility: auto with a remembered size', () => {
-    assert.equal(page.length, 1, 'one rule for the page')
-    assert.equal(bin.length, 1, 'one rule for the workspace bin')
-    assert.match(page[0].selector, /^\.clip-order > \.clip-item:not\(/)
-    assert.match(bin[0].selector, /^& \.clip-order > \.clip-item:not\(/)
-    for (const rule of skipping) {
-      assert.equal(declaration(rule.body, 'contain-intrinsic-size'), 'auto var(--clip-row-h)')
-    }
+  it('each row has a fixed block size, and skips drawing off screen with that size remembered', () => {
+    assert.equal(rows.length, 1, 'one `.bin-row` rule')
+    assert.equal(declaration(rows[0].body, 'block-size'), 'var(--bin-row-h)')
+    assert.equal(skipping.length, 1, 'one skipping rule')
+    assert.equal(skipping[0].selector, '&:not(:focus-within)')
+    assert.equal(declaration(skipping[0].body, 'contain-intrinsic-block-size'), 'auto var(--bin-row-h)')
   })
 
-  it('rows are drawn as before in a panel too narrow for their tools (under 20.25rem)', () => {
-    assert.deepEqual(page[0].at, ['@layer screens', '@container (width >= 20.25rem)'])
+  it('a focused row is drawn whole, so its ring and what it scrolls to are never skipped', () => {
+    assert.match(skipping[0].selector, /:not\(:focus-within\)/)
   })
 
-  it('the bin’s compact rows fit its width, so they are skipped at every width', () => {
-    assert.deepEqual(bin[0].at, ['@layer screens', COMPACT])
-  })
-
-  it('a focused row, a drop target, the lifted row and a row dnd-kit moves are drawn whole', () => {
-    for (const rule of skipping) {
-      const excluded = /:not\(([^)]*\([^)]*\)[^)]*|[^)]*)\)/.exec(rule.selector)?.[1] ?? ''
-      for (const state of [':focus-within', '[data-drop-before]', '[data-dragging]', "[style*='transform']"]) {
-        assert.ok(excluded.includes(state), `excludes ${state}`)
-      }
-    }
-  })
-
-  it('the bin’s estimate is the measured collapsed compact row in each of its layouts', () => {
-    const estimate = (selector: string, at: string[]) =>
-      all
-        .filter((rule) => rule.selector === selector && rule.at.join(' / ') === at.join(' / '))
-        .map((rule) => declaration(rule.body, '--clip-row-h'))
-        .filter((value) => value !== null)
-    // Rows of 118 px (three lines; a finger's under 22rem), 68 px for a fine pointer from 13.5rem
-    // (two lines, padding --s-1) and 78 px for a finger from 22rem, less the padding and border
-    // the content box leaves out.
-    assert.deepEqual(estimate('& .clip-item', ['@layer screens', COMPACT]), ['6.3125rem'])
+  it('the row height is a token: 40 px with a fine pointer, 48 px with a coarse one', () => {
+    const tokens = all.filter((rule) => declaration(rule.body, '--bin-row-h') !== null)
     assert.deepEqual(
-      estimate(`${COMPACT} .clip-item`, [
-        '@layer screens',
-        '@media not (pointer: coarse)',
-        '@container (width >= 13.5rem)',
-      ]),
-      ['3.7031rem'],
-    )
-    assert.deepEqual(
-      estimate(`${COMPACT} .clip-item`, [
-        '@layer screens',
-        '@media (pointer: coarse)',
-        '@container (width >= 22rem)',
-      ]),
-      ['4.8125rem'],
+      tokens.map((rule) => [rule.at.join(' / '), declaration(rule.body, '--bin-row-h')]),
+      [
+        ['@layer screens', '2.5rem'],
+        ['@layer screens / @media (pointer: coarse)', '3rem'],
+      ],
     )
   })
 
-  it('the estimate is the measured collapsed-row height in each container-query layout', () => {
-    const estimate = (at: string | null) =>
-      all
-        .filter(
-          (rule) =>
-            rule.selector === '.clip-item' &&
-            (at === null ? !rule.at.some((p) => p.startsWith('@container')) : rule.at.includes(at)),
-        )
-        .map((rule) => declaration(rule.body, '--clip-row-h'))
-        .filter((value) => value !== null)
-    // Rows of 68, 89, 77 and 99 px at a 16 px root (1024, 1280, 768 and 390 px windows), less
-    // the 17 px of padding and border the content box leaves out.
-    assert.deepEqual(estimate(null), ['3.1875rem'])
-    assert.deepEqual(estimate('@container (width >= 64rem)'), ['4.5rem'])
-    assert.deepEqual(estimate('@container (width < 58rem)'), ['3.75rem'])
-    assert.deepEqual(estimate('@container (width < 30rem)'), ['5.125rem'])
-  })
-
-  it('a coarse pointer’s taller two-line row (30-58rem) has its own estimate', () => {
-    const coarse = (selector: string, at: string, property: string) =>
-      all
-        .filter(
-          (rule) =>
-            rule.selector === selector &&
-            rule.at.includes('@media (pointer: coarse)') &&
-            rule.at.includes(at),
-        )
-        .map((rule) => declaration(rule.body, property))
-        .filter((value) => value !== null)
-    // 91 px rows at 600 and 768 px with a finger: the Cuts control's 14 px gap under the handle
-    // comes on top of the fine pointer's 77 px row.
-    const estimate = coarse('.clip-item', '@container (30rem <= width < 58rem)', '--clip-row-h')
-    assert.deepEqual(estimate, ['4.625rem'])
-    const [gap] = coarse('.clip-item > .cuts-toggle', '@container (width < 58rem)', 'margin-block-start')
-    assert.equal(parseFloat(estimate[0]!) - 3.75, parseFloat(gap ?? 'NaN'))
-  })
-
-  it('the estimate is static CSS: no script writes it', () => {
+  it('the row height is static CSS: no script writes it', () => {
     for (const file of sourceFiles(src)) {
-      assert.doesNotMatch(readFileSync(file, 'utf8'), /--clip-row-h/, file.pathname)
+      assert.doesNotMatch(readFileSync(file, 'utf8'), /--bin-row-h/, file.pathname)
     }
   })
 
@@ -178,15 +107,5 @@ describe('the clip rows skip drawing off screen', () => {
     for (const file of cssFiles(src)) {
       assert.doesNotMatch(readFileSync(file, 'utf8'), /overflow-anchor\s*:\s*none/, file.pathname)
     }
-  })
-})
-
-describe('the played list is one composited layer', () => {
-  it('a chapter’s list of played clips has will-change: transform', () => {
-    const list = rules(editCss).filter((rule) => rule.selector === '.edit-chapter > ol.clip-order')
-    assert.deepEqual(
-      list.map((rule) => declaration(rule.body, 'will-change')),
-      ['transform'],
-    )
   })
 })

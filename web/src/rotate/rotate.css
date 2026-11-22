@@ -40,7 +40,7 @@
     rotate: 270deg;
   }
 
-  /* The pair of turn buttons in a clip row's tools (edit.css). */
+  /* The pair of turn buttons in the Clip tab. */
   .clip-rotate {
     display: flex;
     gap: 0.25rem;
@@ -48,10 +48,6 @@
 
   .clip-rotate .btn {
     --_fg: var(--fg-subtle);
-  }
-
-  .clip-item:hover .clip-rotate .btn {
-    --_fg: var(--fg-muted);
   }
 
   /* The read view's tag: words and an icon, beside the clip's name (a collapsing space, not a margin, so a wrapped tag stays flush). */

@@ -1,7 +1,7 @@
 /* The event page (`EventDetail.tsx`). */
 @layer screens {
   /*
-   * The clip columns, read by the tables here and by Edit mode's grid (`edit.css`):
+   * The clip columns, read by the tables here:
    * the file column takes the rest. Fixed 39rem: at the 50rem card breakpoint the
    * file column still has 11rem, room for an 18-character camera name
    * (`YYYYMMDDhhmmss.mp4`) on one line; from a 64rem panel, with the wider frame,
@@ -18,7 +18,7 @@
   /*
    * A wide panel: a larger frame (128 × 72; the service's 320 × 180 source stays
    * sharp at 2×). Set on the panel's children, whose query container is the panel,
-   * and inherited by its table or Edit mode's rows.
+   * and inherited by its table.
    */
   @container (width >= 64rem) {
     .event-detail .panel > * {
@@ -209,7 +209,7 @@
     white-space: nowrap;
   }
 
-  /* A chapter saved without clips: words in its table's place (in Edit mode: drag.css). */
+  /* A chapter saved without clips: words in its table's place (in Edit mode: the Chapters list). */
   .chapter-empty {
     padding: var(--s-4);
     color: var(--fg-muted);
@@ -259,11 +259,10 @@
 
   /*
    * An included clip, the usual case: its words and icon, without a label's fill
-   * and edge, so the new, missing and ignored ones stand out. Both views: the
-   * table's rows here and Edit mode's (`li.clip-item[data-status]`), whose only
-   * pill is its status. Never hidden: status is never color alone.
+   * and edge, so the new, missing and ignored ones stand out,
+   * in the table's rows. Never hidden: status is never color alone.
    */
-  :is(.clip-row, .clip-item)[data-status='active']:not([data-excluded]) .pill {
+  .clip-row[data-status='active']:not([data-excluded]) .pill {
     --_bg: transparent;
     --_fg: var(--fg-muted);
 

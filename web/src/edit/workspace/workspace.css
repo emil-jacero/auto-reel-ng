@@ -51,7 +51,7 @@
   /* The bin's column: the player (it never scrolls), then the scroll box with the lists. */
   .ws-binbox {
     grid-area: bin;
-    /* The toolbar's first row asks how wide the pane is (`.mark-line[data-player='hidden']`). */
+    /* A query container on its own inline size: what the column holds never widens it. */
     container-type: inline-size;
     display: flex;
     flex-direction: column;
@@ -678,8 +678,8 @@
   }
 }
 
-/* The clip bin (`ClipOrderList` `compact`, D3): the chapter lists in the pane's width. The rows'
-   own layout is edit.css's (`.edit-chapter[data-compact]`). Nothing here scrolls the pane
+/* The bin's pane (`ClipBin.tsx`, clipBin.css): a column the list scrolls in. A pane that holds no
+   list (an empty event) keeps its words in the pane's width. Nothing here scrolls the pane
    sideways. */
 @layer screens {
   .ws-bin {
@@ -689,235 +689,8 @@
     padding-block-end: var(--s-4);
     font-size: var(--text-sm);
 
-    & > :is(.mark-line, .empty-state) {
+    & > .empty-state {
       padding-inline: var(--s-3);
-    }
-
-    /* Flat sections, edge to edge: the pane is their frame. */
-    & .edit-chapter {
-      border-inline: 0;
-      border-radius: 0;
-    }
-
-    & .edit-chapter > .clip-order:last-child > .clip-item:last-child {
-      border-radius: 0;
-    }
-
-    /* The heading keeps one line in the bin's width: the name takes up to half of it (then an
-       ellipsis), the moved count gives way (an ellipsis; its words stay in the page), and the
-       clip count never shrinks. No button is in the heading. */
-    & .edit-chapter > .panel-header {
-      flex-wrap: nowrap;
-      gap: var(--s-1) var(--s-2);
-      padding-inline: var(--s-3) var(--s-2);
-
-      & > h2 {
-        flex: none;
-        max-inline-size: 50%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        overflow-wrap: normal;
-      }
-
-      & > .badge {
-        display: block;
-        flex: 0 1 auto;
-        min-inline-size: 0;
-        overflow: hidden;
-        font-size: var(--text-xs);
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      & > .panel-meta {
-        flex: none;
-        margin-inline-start: auto;
-        font-size: var(--text-xs);
-        white-space: nowrap;
-      }
-    }
-
-    @media (width >= 960px) {
-      /* The chapter heading bar: 36 px, a name and its counts, no button (the tools are in the
-         inspector's Chapters list). */
-      --panel-head-h: 2.25rem;
-      /* 8 px between the pane's sections, not 12: with the ignored clips apart it keeps three
-         whole played rows in the 1280x720 bin (D6). The stacked bin keeps 12 px. */
-      gap: var(--s-2);
-
-      & .edit-chapter > .panel-header {
-        padding-block: 0.1875rem;
-
-        & > h2 {
-          flex: 0 1 auto;
-          /* The title carries the whole name. */
-          min-inline-size: 0;
-        }
-      }
-    }
-
-    @media (width >= 960px) {
-      /* The marks line as the bin's sticky toolbar (D2): two fixed rows, 88 px with a fine pointer.
-         Chapter headings stick under it, and focus scrolled into view clears both. */
-      --bin-toolbar-h: 5.5rem;
-      --bin-stick-h: var(--bin-toolbar-measured, var(--bin-toolbar-h));
-      --header-h: var(--bin-stick-h);
-      scroll-padding-block: calc(
-          var(--bin-stick-h) + var(--panel-head-h) + var(--s-2)
-        )
-        var(--s-2);
-
-      /* A short window leaves the scroll box about 194 px under the player: the toolbar, a heading
-         and a 68 px row take 192 of it, so the breathing room goes (the row sits flush under the
-         heading, never behind it). */
-      @media (height < 46rem) {
-        scroll-padding-block: calc(var(--bin-stick-h) + var(--panel-head-h)) 0;
-      }
-
-      & > .mark-line {
-        --mark-control-h: 2rem;
-        --mark-gap: var(--s-2);
-        position: sticky;
-        inset-block-start: 0;
-        z-index: 4;
-        grid-template-columns: minmax(0, 1fr);
-        box-sizing: border-box;
-        min-block-size: var(--bin-toolbar-h);
-        block-size: max-content;
-        padding-block: var(--s-2) calc(var(--s-2) - 1px);
-        border-block-end: 1px solid var(--border);
-        background: var(--surface);
-        align-content: start;
-      }
-
-      & .mark-line .help-toggle {
-        block-size: var(--mark-control-h);
-        min-block-size: var(--mark-control-h);
-        min-inline-size: var(--mark-control-h);
-        padding-inline: 0;
-        justify-content: center;
-        position: relative;
-      }
-
-      & .mark-line .help-label,
-      & .mark-words,
-      & .mark-move-label {
-        position: absolute;
-        inline-size: 1px;
-        block-size: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-      }
-
-      & .mark-line-slot {
-        min-inline-size: 0;
-        justify-content: flex-end;
-      }
-
-      /* Hidden, the player's Show player sits beside the Clips help as an icon alone, 32 px square
-         (its name says the shown clip, its tooltip "Show player"). */
-      & .mark-line .bin-player-show {
-        min-inline-size: var(--mark-control-h);
-        inline-size: var(--mark-control-h);
-        padding-inline: 0;
-        justify-content: center;
-      }
-
-      /* The two buttons and the count are a row of at most 257 px in the pane's 240 to 320: with
-         Show player beside the help, Clear marks gives way to its icon so the row does not wrap
-         and the first mark moves no row. The words stay for assistive technology and as a tooltip. */
-      @container (width < 19rem) {
-        & .mark-line[data-player='hidden'] .mark-clear-icon {
-          display: inline-flex;
-        }
-
-        & .mark-line[data-player='hidden'] .mark-clear-words {
-          position: absolute;
-          inline-size: 1px;
-          block-size: 1px;
-          overflow: hidden;
-          clip-path: inset(50%);
-          white-space: nowrap;
-        }
-
-        & .mark-line[data-player='hidden'] .mark-line-slot .btn {
-          position: relative;
-          min-inline-size: var(--mark-control-h);
-          padding-inline: 0;
-          justify-content: center;
-        }
-      }
-
-      /* An open Clips help scrolls inside the toolbar rather than covering the bin. */
-      & .mark-line > .help-panel {
-        max-block-size: 25vh;
-        overflow: auto;
-      }
-
-      & .mark-actions {
-        display: flex;
-        flex-wrap: nowrap;
-        gap: var(--mark-gap);
-      }
-
-      & .mark-rotate {
-        flex: none;
-        flex-wrap: nowrap;
-
-        & .btn {
-          position: relative;
-          min-inline-size: var(--mark-control-h);
-          inline-size: var(--mark-control-h);
-          padding-inline: 0;
-          justify-content: center;
-        }
-      }
-
-      & .mark-move {
-        flex: 1 1 auto;
-        flex-wrap: nowrap;
-        position: relative;
-
-        & select {
-          flex: 1 1 auto;
-          inline-size: auto;
-          min-inline-size: 0;
-        }
-
-        & .btn {
-          flex: none;
-        }
-      }
-
-      @media (pointer: coarse) {
-        /* A finger's controls make the toolbar tall (up to three 44 px rows in a 240 px bin), too
-           tall to hold in a short pane: it scrolls with the bin as before, and only the chapter
-           headings stick, at the top. */
-        --bin-stick-h: 0px;
-        --bin-toolbar-h: 7rem;
-
-        & > .mark-line {
-          --mark-control-h: 2.75rem;
-          position: static;
-        }
-
-        /* Two 44 px Rotate buttons, the picker and Move do not fit one row of a 240 px bin
-           without squeezing the picker to its chevron: the Move group wraps to a row of its
-           own, as it does off the workspace, and the picker keeps room for a chapter name. */
-        & .mark-actions {
-          flex-wrap: wrap;
-        }
-
-        & .mark-move {
-          flex-wrap: wrap;
-
-          & select {
-            min-inline-size: 7rem;
-          }
-        }
-      }
     }
   }
 }
