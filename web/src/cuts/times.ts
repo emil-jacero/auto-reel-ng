@@ -284,19 +284,6 @@ export function spokenSummary(cuts: readonly ListedCut[]): string {
     : `${cutCount(kept.length)}, ${spokenLength(cutOutSeconds(kept))} cut out`
 }
 
-/** The Cuts control's name: `Cuts of a.mp4`, or `1 cut of a.mp4, 1.5 seconds cut out`. */
-export function toggleName(cuts: readonly ListedCut[], name: string, typed = false): string {
-  const kept = keptCuts(cuts)
-  const base =
-    kept.length === 0
-      ? `Cuts of ${name}`
-      : `${cutCount(kept.length)} of ${name}, ${spokenLength(cutOutSeconds(kept))} cut out`
-  return typed ? `${base}${TYPED_SUFFIX}` : base
-}
-
-/** Said after the Cuts control's name while its panel holds a time typed but not added. */
-export const TYPED_SUFFIX = ', a cut typed, not added'
-
 /** The forms a time may take, as the hint and the refusal name them. */
 export const TIME_FORMS = 'seconds (75.5), m:ss (1:15.5) or h:mm:ss (1:01:15.5)'
 

@@ -1361,22 +1361,22 @@ export function movedSet(
 }
 
 /**
- * The marked clips in page order: the listed chapters as given, and in each its play order,
+ * The clips of `wanted` in page order: the listed chapters as given, and in each its play order,
  * restricted to the clips a listed chapter plays (a stale or unlisted identity is dropped, so a
- * mark can never move a clip that is not there).
+ * set can never move a clip that is not there).
  */
 export function groupOf(
   orders: Orders,
   listed: readonly ChapterKey[],
-  marked: ReadonlySet<string>,
+  wanted: ReadonlySet<string>,
 ): string[] {
-  if (marked.size === 0) {
+  if (wanted.size === 0) {
     return []
   }
-  return listed.flatMap((key) => (orders.get(key) ?? []).filter((identity) => marked.has(identity)))
+  return listed.flatMap((key) => (orders.get(key) ?? []).filter((identity) => wanted.has(identity)))
 }
 
-/** The unmarked clips above gap `gap` of `order`, as it is now (the group included). */
+/** The clips outside the group above gap `gap` of `order`, as it is now (the group included). */
 function clipsAbove(order: readonly string[], members: ReadonlySet<string>, gap: number): number {
   const index = Math.min(Math.max(gap, 0), order.length)
   let above = 0
@@ -1386,26 +1386,6 @@ function clipsAbove(order: readonly string[], members: ReadonlySet<string>, gap:
     }
   }
   return above
-}
-
-/**
- * Where a group dropped at gap `gap` of chapter `to` starts, 1-based, and how many clips the
- * chapter then plays: the non-members of `to` plus the group's own. The gap counts over the
- * chapter's order as it is now, the group included. Null when `to` is not in `orders`.
- */
-export function groupPlace(
-  orders: Orders,
-  group: readonly string[],
-  to: ChapterKey,
-  gap: number,
-): { position: number; total: number } | null {
-  const order = orders.get(to)
-  if (order === undefined) {
-    return null
-  }
-  const members = new Set(group)
-  const rest = order.reduce((sum, identity) => sum + (members.has(identity) ? 0 : 1), 0)
-  return { position: clipsAbove(order, members, gap) + 1, total: rest + members.size }
 }
 
 /**
@@ -1463,22 +1443,22 @@ export function moveGroup(draft: Draft, group: readonly string[], to: ChapterKey
 }
 
 /**
- * Move marked to…: the marked clips in page order (`groupOf`) put at the end of chapter `to`
- * as one run, by the drag's own edit (`moveGroup` at the gap past the last clip). `moved` is
- * the group that moved; when nothing changes (no mark, a stale mark, an unlisted target, a
+ * Move to…: the clips of `wanted` in page order (`groupOf`) put at the end of chapter `to`
+ * as one run, by the drop's own edit (`moveGroup` at the gap past the last clip). `moved` is
+ * the group that moved; when nothing changes (no clip, a stale one, an unlisted target, a
  * group already last there) it is empty and `draft` is returned itself.
  */
-export function moveMarkedToEnd(
+export function moveToEnd(
   draft: Draft,
   listed: readonly ChapterKey[],
-  marked: ReadonlySet<string>,
+  wanted: ReadonlySet<string>,
   to: ChapterKey,
 ): { draft: Draft; moved: readonly string[] } {
   const target = draft.orders.get(to)
   if (target === undefined || !listed.includes(to)) {
     return { draft, moved: [] }
   }
-  const group = groupOf(draft.orders, listed, marked)
+  const group = groupOf(draft.orders, listed, wanted)
   const next = moveGroup(draft, group, to, target.length)
   return next === draft ? { draft, moved: [] } : { draft: next, moved: group }
 }

@@ -31,7 +31,7 @@ export type ClipMenuItem = {
 }
 
 export type ClipMenuFacts = {
-  /** `EditBinding.locked`: a save or a move of marked clips is pending. */
+  /** `EditBinding.locked`: a save or a move of the selected clips is pending. */
   locked: boolean
   /** `cutAtPlayhead`'s refusal now, or null. */
   cutWhy: string | null

@@ -132,8 +132,7 @@ import {
   moveChapter,
   moveClip,
   moveClipTo,
-  moveGroup,
-  moveMarkedToEnd,
+  moveToEnd,
   movedSet,
   ignoreChanges,
   ignoreClip,
@@ -177,15 +176,7 @@ import type {
   EditableChapter,
   MetadataField,
 } from './draft'
-import {
-  NOTHING_IGNORED,
-  NOTHING_MOVED,
-  NO_MARKS,
-  afterMove,
-  clearMarks,
-  movedWords,
-  toggleMark,
-} from './marks'
+import { NOTHING_IGNORED, NOTHING_MOVED, movedWords } from './moveWords'
 import { FIELD_LABEL, inheritHint, MetadataForm } from './MetadataForm'
 import type { Resolved } from './MetadataForm'
 import { PosterPanel } from './PosterPanel'
@@ -222,9 +213,9 @@ import {
  * and the pressed control is busy; every failure keeps the edits and says why.
  *
  * The chapters themselves are edited here too: added, renamed, moved up or down,
- * deleted once empty, and clips moved between them with Move marked to…
- * dialog (`ChapterTools.tsx`, `ChapterDialogs.tsx`) or dragged one at a time
- * into another chapter (`ChapterDrag.tsx`, around every chapter). What a name
+ * deleted once empty, with their tools and dialogs (`ChapterTools.tsx`,
+ * `ChapterDialogs.tsx`); clips move between them on the Timeline or with the Clip
+ * tab's Move to… (`ClipBin.tsx` lists them, one plain list). What a name
  * means for clips added later (D-12) is said beside the chapter
  * (`chapterNames.ts`). So are each clip's cuts, in a panel under its row
  * (`cuts/CutsPanel.tsx`): a cut typed but not added holds Save back, as a date
@@ -249,7 +240,7 @@ type ReadFailure = {
 /**
  * What travels with the draft through the history: the counters that name added chapters and cuts,
  * so that an undone add and the next one never share a key. Not transient state (a save in flight,
- * problems, marks, typed text), which belongs to no step.
+ * problems, typed text), which belongs to no step.
  */
 type Step = { draft: Draft; nextCut: number; added: number }
 
@@ -280,11 +271,6 @@ type Ready = {
   typed: ReadonlySet<string>
   /** The card dialog's Name field holds a refused name: unfinished, like a typed cut. */
   nameUnsent: boolean
-  /**
-   * The clips marked to move together (edit/marks.ts). Beside the draft, not in it: marking
-   * is no edit, so it never makes the page dirty. Ended by Reset and by a re-read.
-   */
-  marked: ReadonlySet<string>
   /** Cuts added so far in this session: the next one's key is `a${nextCut + 1}`. */
   nextCut: number
   /** Bumped by Reset, which remounts the fields (a partial date has no value to reset). */
@@ -331,13 +317,9 @@ type Action =
   | { type: 'chapter-move'; key: ChapterKey; delta: -1 | 1 }
   | { type: 'chapter-delete'; key: ChapterKey }
   | { type: 'chapter-restore'; key: ChapterKey }
-  | { type: 'marked-move'; to: ChapterKey }
   | { type: 'clip-drop'; from: ChapterKey; to: ChapterKey; identity: string; at: number }
-  | { type: 'group-drop'; dragged: string; to: ChapterKey; gap: number }
-  // A set of clips, shipped in the action (`clip-multi-select` D2); the marks stay as they are.
+  // A set of clips, shipped in the action (`clip-multi-select` D2).
   | SelectionEdit
-  | { type: 'mark'; identity: string; on: boolean }
-  | { type: 'marks-clear' }
   | { type: 'field'; field: MetadataField; value: string }
   | { type: 'date-validity'; incomplete: boolean }
   | {
@@ -453,9 +435,6 @@ function describeEdit(action: Action, before: Ready): { label: string; key: stri
       }
     case 'clip-drop':
       return { label: `move of ${clipName(action.identity)}`, key: null }
-    case 'marked-move':
-    case 'group-drop':
-      return { label: 'move of marked clips', key: null }
     case 'selection-move':
     case 'selection-drop':
     case 'ignore-many':
@@ -614,7 +593,6 @@ function step(state: State, action: Action): State {
         dateIncomplete: false,
         typed: NONE_TYPED,
         nameUnsent: false,
-        marked: NO_MARKS,
         nextCut: 0,
         resets: 0,
         pressed: null,
@@ -691,19 +669,6 @@ function step(state: State, action: Action): State {
         : withDraft(state, deleteChapter(state.draft, action.key))
     case 'chapter-restore':
       return withDraft(state, restoreChapter(state.draft, action.key))
-    case 'marked-move': {
-      // Move marked to…: the state's own marks, in page order, at the end of `to` (`moveMarkedToEnd`).
-      const listed = listedChapters(state.draft.chapters).map((chapter) => chapter.key)
-      const result = moveMarkedToEnd(state.draft, listed, state.marked, action.to)
-      return result.draft === state.draft
-        ? state
-        : afterEdit({
-            ...state,
-            draft: result.draft,
-            lastMoved: null,
-            marked: afterMove(state.marked, result.moved),
-          })
-    }
     case 'clip-drop': {
       // A drag into another chapter, at the place it was dropped (`moveClipTo`).
       const { from, to, identity, at } = action
@@ -713,21 +678,7 @@ function step(state: State, action: Action): State {
       const draft = moveClipTo(state.draft, from, to, identity, at)
       return draft === state.draft
         ? state
-        : afterEdit({ ...state, draft, lastMoved: identity, marked: afterMove(state.marked, [identity]) })
-    }
-    case 'group-drop': {
-      // The whole marked group, in page order, as one run at the gap (`moveGroup`). The group
-      // is taken from the state's marks, not shipped by the drag, so a drag can never move a
-      // clip the state does not hold marked. A no-op drop keeps the state, marks included.
-      const listed = listedChapters(state.draft.chapters).map((chapter) => chapter.key)
-      const group = groupOf(state.draft.orders, listed, state.marked)
-      if (group.length === 0 || !isListed(state.draft, action.to)) {
-        return state
-      }
-      const draft = moveGroup(state.draft, group, action.to, action.gap)
-      return draft === state.draft
-        ? state
-        : afterEdit({ ...state, draft, lastMoved: action.dragged, marked: afterMove(state.marked, group) })
+        : afterEdit({ ...state, draft, lastMoved: identity })
     }
     case 'selection-move':
     case 'selection-drop':
@@ -736,12 +687,6 @@ function step(state: State, action: Action): State {
       const next = selectionStep(state, action)
       return next === state ? state : afterEdit(next)
     }
-    case 'mark': {
-      const marked = toggleMark(state.marked, action.identity, action.on)
-      return marked === state.marked ? state : { ...state, marked }
-    }
-    case 'marks-clear':
-      return state.marked.size === 0 ? state : { ...state, marked: clearMarks(state.marked) }
     case 'field':
       return afterEdit({
         ...state,
@@ -859,7 +804,6 @@ function step(state: State, action: Action): State {
         dateIncomplete: false,
         typed: NONE_TYPED,
         nameUnsent: false,
-        marked: NO_MARKS,
         nextCut: 0,
         resets: state.resets + 1,
         problem: null,
@@ -1119,7 +1063,7 @@ type ChapterFocus = {
   target: 'heading' | 'chapter-up' | 'chapter-down' | 'chapter-undo' | 'chapter-delete' | 'add'
 }
 
-/** The statuses of a clip on disk that the chapter plays: the ones that can be marked and moved. */
+/** The statuses of a clip on disk that the chapter plays: the ones that can be selected and moved. */
 function onDisk(clip: Clip | undefined): boolean {
   return clip?.status === 'active' || clip?.status === 'new'
 }
@@ -1130,17 +1074,17 @@ function playedOf(draft: Draft, identities: readonly string[]): string[] {
   return groupOf(draft.orders, listed, new Set(identities))
 }
 
-/** A clip that can carry a mark: on disk and not excluded (the rows with a Cuts control). */
-function canMark(clip: Clip | undefined): boolean {
+/** A clip the movie can play: on disk and not excluded (the clips with a Cuts panel). */
+function canPlay(clip: Clip | undefined): boolean {
   return onDisk(clip) && clip?.excluded !== true
 }
 
 /**
- * A clip that can be one of several selected (`plain-clip-bin` D5): one that can carry a mark, or an
+ * A clip that can be one of several selected (`plain-clip-bin` D5): one the movie can play, or an
  * ignored one, so that Include clips acts on a set of them. A missing or excluded clip is selected alone.
  */
 function canJoin(clip: Clip | undefined): boolean {
-  return canMark(clip) || clip?.status === 'ignored'
+  return canPlay(clip) || clip?.status === 'ignored'
 }
 
 /** A clip whose file is there (included, New or ignored): the clips an Include clips may bring back. */
@@ -1149,8 +1093,8 @@ function hasFile(clip: Clip | undefined): boolean {
 }
 
 /**
- * The name the row of `identity` gives it in `draft` now (ClipOrderList's `nameOf`
- * inputs): a move, or a chapter's rename, renames it in the save bar as in its row.
+ * The name the row of `identity` gives it in `draft` now (`binList`'s naming):
+ * a move, or a chapter's rename, renames it in the save bar as in its row.
  */
 function nameNow(
   draft: Draft,
@@ -1192,7 +1136,7 @@ function placeIn(draft: Draft, key: ChapterKey): string {
 
 /**
  * Why a chapter cannot be deleted, or null when it can. It still plays a clip:
- * one on disk moves out with Move marked to…, a missing one goes with its Remove. Or it
+ * one on disk moves out with Move to…, a missing one goes with its Remove. Or it
  * is the event's own chapter and lists an ignored clip the page would list under
  * it again after the save (`ignoredStaying`): it would come back holding only that.
  */
@@ -1776,10 +1720,10 @@ export function EventEditor({
   // The state the chapter handlers below act on: they stay the same functions, so
   // a chapter's tools keep their memoised props and typing in a field re-renders no list.
   const latest = useRef<Ready | null>(null)
-  // A Move marked to… is pending, set before the transition starts and cleared when it
+  // A Move to… is pending, set before the transition starts and cleared when it
   // lands: a press meanwhile would act on the order from before the move.
   const moving = useRef(false)
-  // A clip lifted by the drag and not yet dropped (`ChapterDrag`'s `onLift`).
+  // A clip lifted by the bin's drag and not yet dropped (`ClipBin`'s `onLift`).
   const lifted = useRef(false)
   const onLift = useCallback((is: boolean) => {
     lifted.current = is
@@ -1788,7 +1732,7 @@ export function EventEditor({
     latest.current = ready
     moving.current = movePending
   })
-  /** Whether a chapter control may act now: not while a save or a move of marked clips is pending. */
+  /** Whether a chapter control may act now: not while a save or a move of the selected clips is pending. */
   const idle = (current: Ready | null): current is Ready =>
     current !== null && current.pressed === null && !moving.current
 
@@ -1802,7 +1746,7 @@ export function EventEditor({
   )
 
   // The cut operations: one stable object, so the rows keep their memoised props. The
-  // panel checks a cut and speaks it; a press while a save or a move of marked clips is pending
+  // panel checks a cut and speaks it; a press while a save or a move of the selected clips is pending
   // changes nothing here either.
   const cutHandlers = useMemo<CutHandlers>(
     () => ({
@@ -1989,8 +1933,7 @@ export function EventEditor({
   )
 
   // Rotate left / right of the selected clips (`clip-multi-select` D5): every clip on disk that a
-  // chapter plays, each from its own turn, one edit and one Undo step; the clips come in the call,
-  // not from the marks, so the marks are untouched.
+  // chapter plays, each from its own turn, one edit and one Undo step; the clips come in the call.
   const onRotateMany = useCallback<EditBinding['onRotateMany']>(
     (identities, way) => {
       const current = latest.current
@@ -2010,8 +1953,8 @@ export function EventEditor({
     [announce, clips],
   )
 
-  // Move to… of the selected clips (`clip-multi-select` D5): at the end of `to`, in play order, as
-  // Move marked to… does it, applied in a transition so the move is pending (`movePending`, which
+  // Move to… of the selected clips (`clip-multi-select` D5): at the end of `to`, in play order, applied
+  // in a transition so the move is pending (`movePending`, which
   // locks every control that acts on the lists) until it lands.
   const onMoveSelection = useCallback<EditBinding['onMoveSelection']>(
     (identities, to) => {
@@ -2027,7 +1970,7 @@ export function EventEditor({
         onDisk: (identity) => onDisk(clips.get(identity)),
       }
       const wanted = new Set(identities.filter(action.onDisk))
-      const { moved } = moveMarkedToEnd(current.draft, keys, wanted, to)
+      const { moved } = moveToEnd(current.draft, keys, wanted, to)
       if (moved.length === 0) {
         announce(NOTHING_MOVED)
         return
@@ -2121,7 +2064,7 @@ export function EventEditor({
     const box = document.querySelector('.ws-binbox')?.getBoundingClientRect()
     return box !== undefined && x >= box.left && x < box.right && y >= box.top && y < box.bottom
   }, [])
-  // A clip of the bin released at a client point (`ChapterDrag`): over the track it is included
+  // An ignored clip of the bin released at a client point (`ClipBin`): over the track it is included
   // when ignored, else moved to the slot; false when the point is not over the track. The bin's
   // own drop then does not run.
   const onDropOnTrack = useCallback(
@@ -2525,7 +2468,7 @@ export function EventEditor({
     if (active !== null && active !== document.body) {
       return
     }
-    Array.from(document.querySelectorAll<HTMLElement>('li.clip-item[data-identity]'))
+    Array.from(document.querySelectorAll<HTMLElement>('.bin-row[data-identity]'))
       .find((row) => row.dataset.identity === was && row.closest('[hidden]') === null)
       ?.focus({ preventScroll: true })
   }, [heldIdentity])
@@ -2901,7 +2844,7 @@ export function EventEditor({
   )
   // Where the bin's player puts its Show player while hidden: the bin header's first row.
   const [showSlot, setShowSlot] = useState<HTMLElement | null>(null)
-  // Rotate left / right (`rotate/`): a clip on disk, not while a save or a move of marked clips is pending
+  // Rotate left / right (`rotate/`): a clip on disk, not while a save or a move of the selected clips is pending
   // nor while a clip is lifted. One draft edit, spoken once with the turn the clip now has.
   const onRotate = useCallback<RotateHandler>(
     (identity, way) => {
@@ -3188,7 +3131,7 @@ export function EventEditor({
   function submit(pressed: Pressed, operation: Operation): void {
     // Never a half-typed date (it would be sent as unset), never without a cut typed
     // but not added (it would be lost), and never a save of nothing.
-    // Nor while a move of marked clips is pending: the draft shown is the one from before it.
+    // Nor while a move of the selected clips is pending: the draft shown is the one from before it.
     if (
       ready === null ||
       saving.current ||
@@ -3290,7 +3233,7 @@ export function EventEditor({
 
   // Undo and Redo (`editor-undo`): the buttons in the workspace's top bar and Ctrl/Cmd+Z,
   // Ctrl/Cmd+Shift+Z and Ctrl+Y. Never while a save is in flight, a clip is lifted or a move of
-  // marked clips is pending (the draft shown is not the draft held).
+  // the selected clips is pending (the draft shown is not the draft held).
   const onHistory = useCallback(
     (chord: 'undo' | 'redo') => {
       const current = latest.current
@@ -3823,8 +3766,7 @@ export function EventEditor({
         }
       }}
     >
-      {/* The one live region for the reel read, the button moves, removals and Undos; dnd-kit
-          speaks the drags. */}
+      {/* The one live region for the reel read, the button moves, removals and Undos. */}
       <p role="status" className="visually-hidden">
         {state.status === 'loading' || retrying ? 'Reading reel.yaml…' : announcement}
       </p>

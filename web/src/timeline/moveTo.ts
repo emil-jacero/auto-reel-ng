@@ -1,6 +1,5 @@
 import type { ChapterKey } from '../edit/draft.ts'
-import { MOVE_REASON_WORDS, MOVING_WORDS, moveReason } from '../edit/marks.ts'
-import type { MoveReason } from '../edit/marks.ts'
+import { CHOOSE_CHAPTER_WORDS, MOVING_WORDS, SAVING_WORDS } from '../edit/moveWords.ts'
 
 /*
  * What the Clip tab's Move to… offers and says (`clip-multi-select` D5), for one clip and for
@@ -32,16 +31,15 @@ export function chosenOf(choices: readonly MoveChoice[], value: string): Chapter
  * `moving`: only a Move to… is pending, so the words say the clips move, not that a save runs.
  */
 export function moveWhy(chosen: boolean, busy: boolean, moving = false): string | null {
-  const reason: MoveReason | null = moveReason(1, chosen, busy)
-  if (reason === null) {
-    return null
+  if (busy) {
+    return moving ? MOVING_WORDS : SAVING_WORDS
   }
-  return reason === 'busy' && moving ? MOVING_WORDS : MOVE_REASON_WORDS[reason]
+  return chosen ? null : CHOOSE_CHAPTER_WORDS
 }
 
 /** What a group tab's Rotate and Ignore say while a save or a move is pending. */
 export function groupBusy(moving: boolean): string {
-  return moving ? MOVING_WORDS : MOVE_REASON_WORDS.busy
+  return moving ? MOVING_WORDS : SAVING_WORDS
 }
 
 /** "3 clips selected". */

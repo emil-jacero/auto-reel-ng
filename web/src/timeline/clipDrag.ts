@@ -11,7 +11,7 @@ import type { DrawnChapter, DropSlot } from './reorder.ts'
 /** A press that moves less than this is still a press: it selects (`editor-selection`, D2). */
 export const CLIP_SLOP_PX = 3
 
-/** What a track tool says while a save or a "Move marked…" is pending. */
+/** What a track tool says while a save or a Move to… is pending. */
 export const MOVE_LOCKED = 'Moving clips waits for the save or the move of several clips to finish.'
 
 /** What Alt+Left and Alt+Right say while several clips are selected: they move nothing (design D6). */

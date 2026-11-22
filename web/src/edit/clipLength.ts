@@ -3,8 +3,8 @@ import type { ListedCut } from '../cuts/times.ts'
 import { playedMs } from '../timeline/edgeTrim.ts'
 
 /*
- * The length a clip plays, as the workspace's clip bin shows it in a compact row
- * (`ClipOrderList` `compact`, editor-workspace-layout D3).
+ * The length a clip plays, as the workspace's clip bin shows it in a row
+ * (`ClipBin.tsx`).
  */
 
 /**

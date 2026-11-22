@@ -8,7 +8,7 @@ import { draftChange, nameStep, notChangedWords } from './nameField.ts'
 /*
  * The editor's Name field (`edit-mode-declutter`), the one place a chapter is renamed and the
  * event's title is edited alike. Every accepted name is written to the draft as it is typed, so
- * the heading, the preview, the chapter's header bar and the picker of Move marked to… follow it.
+ * the heading, the preview, the chapter's header bar and the picker of Move to… follow it.
  * A refused name stays in the field, explained in a remounted `role="alert"`, and holds
  * Ctrl+S; the draft keeps the last accepted name. The rename is announced once, when Enter is
  * pressed, focus leaves the field or the selection leaves the card; leaving with a refused name
