@@ -18,7 +18,7 @@ import type { Cut, Suggestion, SuggestionState } from './suggestions'
 export type DecideControl = {
   /** Add a cut for an approved suggestion: its span in seconds, its kind as the reason. */
   onApprove(identity: string, span: { in: number; out: number }, kind: string): void
-  /** A save or a move of marked clips is pending: no decision is taken meanwhile. */
+  /** A save or a move of the selected clips is pending: no decision is taken meanwhile. */
   locked: boolean
   /** Say it through the page's one polite live region. */
   announce(message: string): void

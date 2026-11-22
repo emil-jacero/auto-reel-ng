@@ -134,7 +134,7 @@ export function BinPlayer({
   cutsOf: (identity: string) => readonly DraftCut[]
   /** The clip's turn in the draft. */
   turnOf: (identity: string) => Turn
-  /** A save or a move of marked clips is pending: Set From and Set To change nothing. */
+  /** A save or a move of the selected clips is pending: Set From and Set To change nothing. */
   locked: boolean
   /** The editor's panel store: Set From and Set To write the shown clip's fields in it. */
   panels: CutPanels

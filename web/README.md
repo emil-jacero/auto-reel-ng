@@ -104,38 +104,30 @@ toast naming them (three, and how many more), and both re-read so their own guar
 The event page's **Edit mode** (slice D) is the client's first write. **Edit** reads the
 event's `reel.yaml` (`GET …/reel` and its `ETag`) and turns the page into an editor: the
 title, date, location and description as `reel.yaml` itself says them (an empty field
-inherits from the folder name, and says so), and each chapter's clips as a list to
-reorder — drag a clip's handle (mouse, pen or touch), lift it from the keyboard (Space
-or Enter, the arrows, Space or Enter; Escape cancels), or press its Move up / Move down.
-The rows keep the table's columns (`--clip-*`), so entering Edit mode moves nothing but
-the position number, and they name each clip as the table does (`clipNames`), a folder
-part included where a chapter lists a clip from another folder. **Marks** (`clip-group-select-drag`): a
-box at each clip frame's top right marks it (not for missing or ignored clips); dragging
-a marked clip's handle, or lifting it from the keyboard, moves every marked clip, in page
-order, to the drop position as one edit, and Move clips' Pick marked picks them; marks
-are not a change to save and clear after a move or a Save. A drag can also take a
-clip into another chapter (`cross-chapter-drag`; one `DndContext` around every chapter,
-`edit/ChapterDrag.tsx`), by pointer or keyboard: dropped before any of its clips or after
-the last, the clip lands exactly there, as one edit with Move clips' rules (the "from"
-badge, the counts, the save body). Over another chapter nothing moves: a line marks the
-gap, and a copy of the clip follows the pointer naming the chapter and the position;
-past a chapter's first or last clip the arrows cross into the chapter before or after,
-passing over a deleted one, and Page Down / Page Up jump to the first position of the
-next or the previous chapter. Held near the window's top or bottom edge, a pointer
-scrolls the page, at the window's edge at most about 2,000 px/s (faster if the pointer
-is held outside the window). A chapter that plays no clip shows an area to drop clips
-on. A missing clip stays in its chapter, a deleted chapter's placeholder takes nothing, and
-no drag starts while a save or a Move clips is pending. Move up / Move down never take a
-clip into another chapter; ignored clips are listed but never move. Each chapter's own
+inherits from the folder name, and says so), and the event's clips as **one plain bin**
+(`plain-clip-bin`; `edit/ClipBin.tsx`): every clip in play order, then the ignored clips and
+the clips removed until Save, each of those under a caption. A row shows the clip's frame, its
+name, where it is, its kept length and its status, and holds no control: the list is one
+`listbox` and one keyboard stop with a roving focus (Up, Down, Home and End move it; Enter, or
+Space, selects as a press on a clip's block on the Timeline does, taking Ctrl, Cmd and Shift
+as a click does; Shift+F10 or the context-menu key opens the clip's menu), and a right-click
+opens the same menu. The rows keep the table's columns (`--clip-*`), and they name each clip as
+the table does (`clipNames`), a folder part included where a chapter lists a clip from another
+folder. A clip is moved on the Timeline's track, by pointer or with Alt+Left / Alt+Right, or
+with the Clip tab's **Move earlier**, **Move later** and **Move to…** (to the end of a chosen
+chapter; for several selected clips, in page order), as one edit with the draft's rules (the
+"from" badge, the counts, the save body); none of them takes a drag in the bin. The only row
+that drags is an ignored clip's, onto the track, to include it. A missing clip stays in its
+chapter and a deleted chapter's placeholder takes nothing; ignored clips are listed but never
+move. All of these are inert while a save or a Move to… is pending. A chapter that plays no
+clip says so and tells how to move clips into it. Each chapter's own
 tools row, under its heading, edits the chapters themselves
 (**D-13**): a chapter is renamed at its **title**, a button with a pencil that becomes a
 text field (Enter or leaving it keeps the name, Escape drops it; the event's own chapter
 keeps its name, and shows a **Main title card** line whose title is the event's, edited in
 the same draft as the Title field), **Move up** / **Move down**, **Delete** (only once the
 chapter plays no clip, and for the event's own chapter only once it lists no ignored
-clip; until Save it stays in its place with **Undo**), and **Move clips…**, a dialog
-that moves the picked clips (on disk only, checkboxes, Enter moves) to the end of
-another chapter, a clip moved back returning to its place. **Add chapter** follows the
+clip; until Save it stays in its place with **Undo**). **Add chapter** follows the
 last chapter. A name is trimmed, must not be empty, and must differ, ignoring case,
 from every other chapter's name and from `Main`. Wherever an edit changes what a name
 means for clips added to a folder later (D-12: they join the chapter named exactly
@@ -169,7 +161,7 @@ A cut made here is saved with the reason
 **Undo** (refused, in words, when another cut now overlaps it); a cut added in this Edit
 mode just goes. A time typed but not added counts as unsaved, is named in the save bar
 ("Cut typed on s1710001.mp4, not added"), marks its clip's Cuts control "typed" (also
-while the panel is hidden) and holds Save back, as a date typed in part does; it survives hiding the panel, Move clips and a drag into another chapter, since the editor, not the row, holds
+while the panel is hidden) and holds Save back, as a date typed in part does; it survives hiding the panel, a Move to… and a drag into another chapter, since the editor, not the row, holds
 the panel's state. A save writes only the changed clips' `trims` (their title-clip choice,
 rotation and exclusion as read; no empty entry), and a cut on a NEW clip writes its
 chapter, since `reel.yaml` refuses properties for a clip no chapter lists. A missing
@@ -210,7 +202,7 @@ MPEG-4 Part 2, with a Download), and, after one `Range: bytes=0-0` read of the m
 changed since the page was read (stop editing to read the event again; never "Refresh",
 which leaves Edit mode), an empty file, an unreadable one, a format this browser does not
 play (Download), or no answer (Try again). A preview writes nothing; a pending save or
-Move clips makes Set From / Set To unavailable but leaves playback alone; a clip moved
+Move to… makes Set From / Set To unavailable but leaves playback alone; a clip moved
 within its chapter keeps playing, and one moved to another chapter reopens paused where it
 stood; Reset closes every preview.
 
@@ -351,7 +343,7 @@ src/
 │   ├── binList.ts        the bin's rows, groups, places and moved words (pure; binList.test.ts)
 │   ├── moveWords.ts      what a move says and why a move control waits (pure; moveWords.test.ts)
 │   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
-│   ├── ChapterDialogs.tsx the name dialog (Add chapter) and Move clips
+│   ├── ChapterDialogs.tsx the name dialog (Add chapter)
 │   ├── EditTitlecard.tsx the chapter header bar's Edit Titlecard button (selects the card and asks the docked editor to open)
 │   ├── inlineName.ts     the keep / unchanged / refused rule, the title line, the unkept-name test (pure, + inlineName.test.ts)
 │   ├── chapterBar.ts     the button's words and a chapter's card id (pure)
@@ -656,7 +648,7 @@ HLD §7).
   child with class `dialog-fields` (a `<form>`; its submit button may sit in the
   actions row with `form=`): it is left out of the description too, and rendered
   between the body and the actions, so a long list of choices is never read out
-  when the dialog opens (Edit mode's Move clips). No prop to pass.
+  when the dialog opens. No prop to pass.
 - **Toasts** appear bottom right. A page with a bar held at the bottom of the window
   registers it with `keepToastsClearOf(bar)` (and releases it in the same effect's
   cleanup): the region then sits above the bar while it is stuck, and below it at the
@@ -755,7 +747,7 @@ draft through the Cuts panel's own add, with the suggestion's kind as the cut's 
 `{in, out, reason: black|white|freeze}`, and removing the cut or Reset returns the mark to pending. **Dismiss** and **Restore** (**R** toggles) are for the page
 visit only, are no edit and need no Save. `decideControl` (`overlays/control.ts`) builds the lane's `decide` from Edit mode's binding (`EditBinding.onAdd`,
 `locked`, `announce`); the decision rules (`decideApprove`, `decideDismiss` in `suggestions.ts`) are pure and tested under `npm test`. While a save or a
-Move clips is pending the decisions are unavailable and the detail says so.
+Move to… is pending the decisions are unavailable and the detail says so.
 
 `src/edit/workspace/` holds the workspace's one selection (`editor-selection`): `selection.ts` is the pure model (nothing, clip,
 cut, card or suggestion; `keptSelection`, `inspectorTab`), `useSelection.ts` the setters and Escape, held in `EventDetail`;
@@ -765,9 +757,8 @@ inspector below is docked in the Title card tab, not a dialog.
 Track drag edit (`track-drag-edit`): in Edit mode a clip block on the Timeline's track is dragged to reorder it, or to another chapter
 (`timeline/ClipDrag.tsx` on `dragStore`, with the pure `reorder.ts` and `clipDrag.ts`; a line shows where it lands). A release dispatches
 the lists' own reducer actions, so Save, Reset and the counts are unchanged. A clip dragged from the bin onto the track is included, and
-one dragged off the track to the bin's Ignored part is ignored (`@dnd-kit` stays in the bin and lists, joined to the track by a small
-adapter; the draft's ignore/include edit is `Draft.ignoreEdits` (`ignoreClip` / `includeClip` in `edit/draft.ts`), saved as `ignore`). Alt+Left / Alt+Right moves the selected clip one place,
-across chapters, and the Clip tab's **Ignore clip** button ignores it. All are inert while a save or a Move clips is pending.
+one dragged off the track onto the bin is ignored (both drags are this repo's pointer code, the bin's in `edit/binDrag.ts`; the draft's ignore/include edit is `Draft.ignoreEdits` (`ignoreClip` / `includeClip` in `edit/draft.ts`), saved as `ignore`). Alt+Left / Alt+Right moves the selected clip one place,
+across chapters, and the Clip tab's **Ignore clip** button ignores it. All are inert while a save or a Move to… is pending.
 
 Undo (`editor-undo`): `edit/history.ts` is the pure history around the draft reducer (`record`, `undo`, `redo`, `cleared`; 200 steps, typing in one
 field coalesces into one step within a second, each step carries a label for the buttons' tooltips). Every draft edit is a step, selection is not,
