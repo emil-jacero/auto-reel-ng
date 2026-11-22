@@ -7,6 +7,7 @@ import {
   CUT_ONE_WHY,
   focusAfter,
   focusAfterMany,
+  INCLUDE_THEM_FIRST,
   MENU_LOCKED,
   menuOpenKey,
   menuSelects,
@@ -21,6 +22,11 @@ const facts: ClipMenuFacts = {
   posterWhy: null,
   others: [],
   targets: ['a.mp4'],
+  name: 'a.mp4',
+  state: 'played',
+  drawn: true,
+  played: 1,
+  ignored: 0,
 }
 const main = { key: 'main', name: 'Main' }
 const evening = { key: 'k2', name: 'Kvällen' }
@@ -94,6 +100,11 @@ describe('clipMenu', () => {
       posterWhy: 'no frame',
       others: [main],
       targets: ['a.mp4'],
+      name: 'a.mp4',
+      state: 'played',
+      drawn: true,
+      played: 1,
+      ignored: 0,
     })
     assert.equal(note, MENU_LOCKED)
     assert.equal(items.length, 6)
@@ -107,6 +118,7 @@ describe('clipMenu for several clips', () => {
     cutWhy: 'Move the playhead into a.mp4 to cut there.',
     others: [main, evening],
     targets: ['a.mp4', 'b.mp4', 'c.mp4'],
+    played: 3,
   }
   it('is titled by the count and lists every chapter, with the count in Ignore', () => {
     const { title, items } = clipMenu(many)
@@ -140,6 +152,98 @@ describe('clipMenu for several clips', () => {
   it('is locked under the one line, the group words naming no marks', () => {
     const { note, items } = clipMenu({ ...many, locked: true })
     assert.equal(note, 'Clip edits wait for the save or the move of several clips to finish.')
+    for (const i of items) assert.equal(i.why, note)
+  })
+})
+
+describe('clipMenu by the clip\'s status', () => {
+  const labels = (view: ReturnType<typeof clipMenu>) => view.items.map((i) => [i.label, i.group, i.why])
+  const ignored: ClipMenuFacts = {
+    ...facts,
+    name: 's1710004.mp4',
+    state: 'ignored',
+    drawn: false,
+    others: [main, evening],
+  }
+  it('offers Include clip for an ignored clip, with Rotate and Move to unavailable under "Include <name> first."', () => {
+    const first = 'Include s1710004.mp4 first.'
+    const shown = 'The Timeline does not show s1710004.mp4.'
+    assert.deepEqual(labels(clipMenu(ignored)), [
+      ['Rotate left', 0, first],
+      ['Rotate right', 0, first],
+      ['Cut at playhead', 1, shown],
+      ['Use frame as poster', 1, shown],
+      ['Move to Main', 2, first],
+      ['Move to Kvällen', 2, first],
+      ['Include clip', 3, null],
+    ])
+    assert.deepEqual(clipMenu(ignored).items.at(-1)?.action, { kind: 'include' })
+  })
+  it('offers Remove from reel.yaml for a missing clip, with Rotate and Move to unavailable under "<name> is not on disk."', () => {
+    const missing: ClipMenuFacts = { ...ignored, name: 'borttagen.mp4', state: 'missing', others: [main] }
+    const gone = 'borttagen.mp4 is not on disk.'
+    assert.deepEqual(labels(clipMenu(missing)), [
+      ['Rotate left', 0, gone],
+      ['Rotate right', 0, gone],
+      ['Cut at playhead', 1, 'The Timeline does not show borttagen.mp4.'],
+      ['Use frame as poster', 1, 'The Timeline does not show borttagen.mp4.'],
+      ['Move to Main', 2, gone],
+      ['Remove from reel.yaml', 3, null],
+    ])
+    assert.deepEqual(clipMenu(missing).items.at(-1)?.action, { kind: 'remove' })
+  })
+  it('offers Undo remove for a clip removed in this Edit mode', () => {
+    const removed: ClipMenuFacts = { ...ignored, name: 'borttagen.mp4', state: 'removed', others: [] }
+    const last = clipMenu(removed).items.at(-1)
+    assert.deepEqual([last?.label, last?.action, last?.why], ['Undo remove', { kind: 'restore' }, null])
+    assert.equal(clipMenu(removed).items[0]?.why, 'borttagen.mp4 is not on disk.')
+  })
+  it('keeps Ignore clip for a played clip, and says the track does not show one it does not draw', () => {
+    const played: ClipMenuFacts = { ...facts, drawn: false, cutWhy: 'ignored when not drawn' }
+    const view = clipMenu(played)
+    assert.equal(view.items.at(-1)?.label, 'Ignore clip')
+    assert.deepEqual(
+      view.items.map((i) => i.why),
+      [null, null, 'The Timeline does not show a.mp4.', 'The Timeline does not show a.mp4.', null],
+    )
+  })
+  it('puts the lock before every reason, for a status item too', () => {
+    for (const item of clipMenu({ ...ignored, locked: true }).items) assert.equal(item.why, MENU_LOCKED)
+  })
+})
+
+describe('clipMenu for several clips by status', () => {
+  const several: ClipMenuFacts = {
+    ...facts,
+    targets: ['a.mp4', 'b.mp4', 'c.mp4'],
+    others: [main],
+    played: 1,
+    ignored: 2,
+  }
+  it('counts the ignored clips in Include N clips, and the played ones in Ignore', () => {
+    const items = clipMenu(several).items
+    assert.deepEqual(
+      items.slice(-2).map((i) => [i.label, i.action.kind, i.why]),
+      [
+        ['Ignore 1 clip', 'ignore', null],
+        ['Include 2 clips', 'include', null],
+      ],
+    )
+  })
+  it('lists only Include when every clip is ignored, with Rotate and Move to unavailable', () => {
+    const items = clipMenu({ ...several, played: 0, ignored: 3 }).items
+    assert.deepEqual(items.at(-1)?.label, 'Include 3 clips')
+    assert.equal(items.some((i) => i.action.kind === 'ignore'), false)
+    assert.equal(items[0]?.why, INCLUDE_THEM_FIRST)
+    assert.equal(items.find((i) => i.action.kind === 'move')?.why, INCLUDE_THEM_FIRST)
+  })
+  it('lists no Include when none is ignored', () => {
+    const items = clipMenu({ ...several, played: 3, ignored: 0 }).items
+    assert.equal(items.some((i) => i.action.kind === 'include'), false)
+    assert.equal(items.at(-1)?.label, 'Ignore 3 clips')
+  })
+  it('keeps the lock over Include too', () => {
+    const { note, items } = clipMenu({ ...several, locked: true })
     for (const i of items) assert.equal(i.why, note)
   })
 })
