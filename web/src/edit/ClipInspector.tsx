@@ -84,6 +84,7 @@ export function ClipInspector({
         type="button"
         className="btn btn-secondary ct-step"
         aria-disabled={unavailable || undefined}
+        aria-label={`${label}: ${name}`}
         aria-describedby={unavailable ? `${stepId}-${way}` : undefined}
         title={locked ? MOVE_LOCKED : (edge ?? undefined)}
         onClick={() => {
@@ -150,9 +151,7 @@ export function ClipInspector({
           aria-label={
             offers.action === 'undo'
               ? `Undo removing ${name}`
-              : offers.action === 'remove'
-                ? `${end.label}: ${name}`
-                : undefined
+              : `${end.label}: ${name}`
           }
           onClick={() => {
             if (locked) {
