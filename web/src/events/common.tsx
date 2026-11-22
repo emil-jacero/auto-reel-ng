@@ -48,7 +48,7 @@ export function ClipStatusPills({
   hint = false,
 }: {
   clip: Pick<Clip, 'status' | 'excluded'>
-  /** Each pill's words also as its tooltip (the bin's rows show the icon alone with a fine pointer, edit.css). */
+  /** Each pill's words also as its tooltip (the bin's rows show the icon alone with a fine pointer, edit/clipBin.css). */
   hint?: boolean
 }) {
   const look = CLIP_STATUS_LOOK[clip.status]
