@@ -29,6 +29,7 @@ import {
 } from './overlays/suggestions'
 import { TimelinePanesContext } from './panes'
 import { Timeline } from './Timeline'
+import { ClipMenuHost } from './ClipMenuHost'
 import type { EditBinding } from './editing'
 import { CARDS_FADES, NO_CLIPS } from './labels'
 import { draftClips, omittedWords, readiness, sectionState, trackClips } from './layout'
@@ -244,6 +245,7 @@ export function TimelineSection({
         {omitted.map((words) => (
           <Alert key={words} tone="info" role="note" title={words} />
         ))}
+        {state !== 'track' && <ClipMenuHost editing={editing} selection={cards} />}
         {state === 'none' && <Alert tone="info" role="note" title={NO_CLIPS} />}
         {state === 'prepare' && <Prepare readiness={readiness(shown.clips)} control={prepare} />}
         {state === 'track' && clips !== null && (
