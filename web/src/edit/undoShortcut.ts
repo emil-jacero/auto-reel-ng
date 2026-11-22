@@ -61,7 +61,7 @@ export type UndoKeyAction = 'ignore' | 'nothing' | 'undo' | 'redo'
 
 /**
  * The order of the guards. A repeat, a text field (native undo), a pointer held down (a drag in
- * progress), a lifted clip, a save in flight, a move of marked clips pending and an open dialog
+ * progress), a lifted clip, a save in flight, a move of the selected clips pending and an open dialog
  * do nothing and say nothing; then an empty history says so.
  */
 export function undoKeyAction(state: {
