@@ -62,10 +62,12 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   including every MODIFIED requirement's scenarios. Also:
   - report the rows in view at 1280×720 and 1440×900, with the player and the information shown and hidden;
   - keep the windowing gates: no jump while scrolling 400 rows, and a scroll height within 5 %;
-  - check that a screen reader (Orca with Firefox) announces a row's name, place and selected state, and the
-    selection once;
   - take screenshots of the bin in light and dark at 1440, 1100 and 390 px, and look at them for clipping and
     contrast.
+  - The screen reader part is 3.1b: the Playwright run checked the accessibility tree and the live region only.
+- [ ] 3.1b A person runs Orca with Firefox over the bin's list and checks that it announces a row's name, place
+  and selected state, and the selection once. Not done by Playwright (Orca cannot run headless): leave this open
+  until someone has done it, and name the gap in the PR description.
 - [ ] 3.2 Record the change:
   - HLD D-28: amend "No List view". The bin is one plain list, and the non-pointer reorder path is the Clip tab's Move
     earlier, Move later and Move to…. Remove the marks from D-28's text, and note what the information shows and
