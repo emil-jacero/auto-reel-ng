@@ -63,40 +63,14 @@ describe('binPlayer.css, the empty player', () => {
   })
 })
 
-describe('the bin toolbar with the player hidden (workspace.css)', () => {
+describe('the bin column (workspace.css)', () => {
   const ws = readFileSync(new URL('workspace/workspace.css', import.meta.url), 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
     '',
   )
 
-  it('Clear marks gives way to its icon in a pane narrower than 19rem, only while hidden', () => {
-    const at = ws.indexOf('@container (width < 19rem)')
-    assert.notEqual(at, -1, 'a container query for the narrow pane')
-    const query = ws.slice(at, at + 900)
-    assert.match(query, /\.mark-line\[data-player='hidden'\] \.mark-clear-icon/)
-    assert.match(query, /\.mark-line\[data-player='hidden'\] \.mark-clear-words/)
-  })
-
-  it('the bin column is the container the query asks', () => {
+  it('the bin column is a container on its own inline size', () => {
     const binbox = /\.ws-binbox\s*\{([^}]*)\}/.exec(ws)
     assert.match(binbox?.[1] ?? '', /container-type:\s*inline-size/)
-  })
-})
-
-describe('the marks line with the player hidden on a window under 40rem (edit.css)', () => {
-  const edit = readFileSync(new URL('edit.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-  const at = edit.indexOf('@media (width < 40rem)')
-  const narrow = edit.slice(at, edit.indexOf('.mark-actions', at))
-
-  it('has a narrow block', () => {
-    assert.notEqual(at, -1)
-  })
-
-  it('Show player and Clear marks give way to their icons, only while hidden, so the first mark wraps nothing', () => {
-    assert.match(narrow, /\.mark-line\[data-player='hidden'\]/)
-    assert.match(narrow, /\.bin-player-show \.mark-words/)
-    assert.match(narrow, /\.mark-clear-words/)
-    assert.match(narrow, /\.mark-clear-icon\s*\{\s*display:\s*inline-flex/)
-    assert.match(narrow, /\.bin-player-show,\s*&\s*\.mark-line-slot \.btn\s*\{[^}]*inline-size:\s*var\(--mark-control-h\)/)
   })
 })

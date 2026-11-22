@@ -1,8 +1,7 @@
 /*
  * Edit mode's chapter controls (`ChapterTools.tsx`, `ChapterDialogs.tsx`), in the inspector's
  * Chapters list: each chapter's tools, the deleted placeholder, Add chapter, the "from …" badge,
- * the Edit Titlecard button and the name dialog (an empty chapter's area is drag.css's). No new
- * colour: every text is `--fg-muted` or stronger.
+ * the Edit Titlecard button and the name dialog. No new colour: every text is `--fg-muted` or stronger.
  */
 @layer screens {
   /* Under the sticky one-line header, not in it; scrolls with the chapter. */

@@ -1,26 +1,8 @@
 /*
- * A clip's preview in its Cuts panel (`ClipPreview.tsx`), and the clip's thumbnail
- * as its Watch button in Edit mode. Tokens only, no new color, and no motion: the
- * playhead moves with the video's time only.
+ * A clip's preview (`ClipPreview.tsx`) in the bin's player and the Clip tab. Tokens only, no
+ * new color, and no motion: the playhead moves with the video's time only.
  */
 @layer screens {
-  /* The thumbnail's Watch: the grid cell the bare thumbnail took, which it fills. */
-  .clip-item > .clip-thumb-watch {
-    grid-area: thumb;
-    display: block;
-    inline-size: 100%;
-    padding: 0;
-    border: 0;
-    background: none;
-    border-radius: var(--r-sm);
-    cursor: pointer;
-  }
-
-  .clip-thumb-watch:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-  }
-
   .clip-preview {
     display: grid;
     gap: var(--s-2);
