@@ -190,11 +190,16 @@ typed in the fields outlined, only while Add cut would accept it) with a legend 
 kinds drawn. While a preview is open, the panel's Watch reads **Hide player**. Set From /
 Set To write the playhead's time to the millisecond in the panel's format; it counts as
 typed, so the typed mark and the save bar's hold apply. Skip cuts plays the clip as the
-movie will: it looks ahead of each presented frame (`requestVideoFrameCallback`) at least
-two frame intervals, or the widest of the last eight callback gaps plus one interval, and
-never more than four, so a dropped frame or a browser that calls back only every second
-frame (Firefox) never lets a cut frame show (the kept frames just before a cut may go
-unshown: one on every-frame callbacks, one callback gap otherwise), cuts joined as the
+movie will: it looks ahead of each presented frame (`requestVideoFrameCallback`) the last callback gap, or
+the typical one of the last eight plus one frame interval if more, and never more than four
+intervals, so a dropped frame or a browser that calls back only every second frame
+(Firefox) does not let a cut frame show. The cost is the kept frames just before a cut that
+go unshown: at most one on every-frame callbacks (also with a dropped frame), one or two on
+every second frame (two for a cut on half the cycle's phases), and, while the cadence is
+unknown (a clip's first play), up to 125 ms when Play starts within that of a cut, which the
+start then jumps. The cadence is kept per clip over pause and play. Not covered: a callback
+more than a frame later than usual, or two late ones in a row, within one callback gap of
+a cut. It joins cuts as the
 render joins them, and a cut that ends within 0.1 s of the clip's end stops playback at its start. The preview's
 length is the browser's own read of the file (`loadedmetadata`, `durationchange`), kept per
 media address for the Edit session, never sent or saved; once read it wins over the detail's

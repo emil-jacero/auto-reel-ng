@@ -55,11 +55,13 @@ export function skipSpans(cuts: readonly ListedCut[], lengthMs: number): Skip[] 
 }
 
 /**
- * Where playback goes when the frame at `atMs` is shown and the next comes `stepMs`
- * later (both whole ms): for the first span with `from <= atMs + stepMs < to`,
- * `{stop: from}` when it runs to the end, else `{seek: to}`; null to play on.
- * On the next frame's start, not the shown one's: after a seek to a `to` between two
- * frames, the frame that straddles it is shown and left alone, never sought again.
+ * Where playback goes when the frame at `atMs` is shown and the next callback may come
+ * `stepMs` later (both whole ms): for the first span that starts in `(atMs, atMs + stepMs]`
+ * or holds `atMs + stepMs` (`from <= atMs + stepMs < to`), `{stop: from}` when it runs to
+ * the end, else `{seek: to}`; null to play on. A whole span in the window counts, so a cut
+ * narrower than the step is not stepped over. On the next callback's reach, not the shown
+ * frame: after a seek to a `to` between two frames, the frame that straddles it is shown
+ * and left alone, never sought again.
  */
 export function skipAt(
   spans: readonly Skip[],
@@ -68,7 +70,7 @@ export function skipAt(
   lengthMs: number,
 ): { seek: number } | { stop: number } | null {
   const next = atMs + stepMs
-  const span = spans.find((skip) => skip.from <= next && next < skip.to)
+  const span = spans.find((skip) => skip.from <= next && (next < skip.to || skip.from > atMs))
   if (span === undefined) {
     return null
   }
@@ -78,17 +80,31 @@ export function skipAt(
 /** The most recent steps between callbacks the loop remembers (see `FrameClock`). */
 const GAP_WINDOW = 8
 
+/** Counted steps the loop needs before it trusts what it knows of the cadence. */
+const MIN_STEPS = 3
+
 /** A step wider than this many frame intervals is a stall, not cadence: it is not counted. */
 const STALL_FRAMES = 6
+
+/** The stall limit in ms before any frame interval is known (six frames at 24 fps). */
+const STALL_UNKNOWN_MS = 250
 
 /** The most the loop looks ahead, in frame intervals, however wide the steps seem. */
 const LOOKAHEAD_CAP_FRAMES = 4
 
 /**
+ * How far the loop looks ahead, in ms, until it has counted `MIN_STEPS` steps (the first
+ * callbacks of a clip's first play, whose frame rate it does not know): a callback every
+ * second frame of a 24 or 25 fps clip, and one more frame for a callback off its cycle.
+ */
+export const UNKNOWN_LOOKAHEAD_MS = 125
+
+/**
  * What the frame loop knows of the browser's callback cadence, kept by `frameTick`. The
  * loop may only act on a frame it is called for, and a browser need not call for every
  * frame (Firefox: about every second one, and sometimes off its cycle), so the loop
- * must reckon with the gap to the next callback.
+ * must reckon with the gap to the next callback. The player keeps one clock per clip
+ * across pause and play.
  */
 export interface FrameClock {
   /** The last callback's media time in ms; null at the start and after a seek. */
@@ -115,9 +131,10 @@ export function newFrameClock(): FrameClock {
  * far. A step is the time since the previous callback; it is left out of the cadence when
  * it is the first one after the start or a seek (the decoder is still settling: a startup
  * or seek gap says nothing of the cadence) or wider than `STALL_FRAMES` frame intervals
- * (a stall, GC pause, or a background tab: the cut it would reach is not that near). The
- * frame interval is the shortest step per frame presented in it, so a browser that calls
- * back every second frame still gives the true interval.
+ * (`STALL_UNKNOWN_MS` before an interval is known: a stall, GC pause, or a background tab,
+ * and the cut it would reach is not that near). The frame interval is the shortest step per
+ * frame presented in it, so a browser that calls back every second frame still gives the
+ * true interval.
  */
 export function frameTick(clock: FrameClock, atMs: number, presented: number): FrameClock {
   const { last } = clock
@@ -128,7 +145,8 @@ export function frameTick(clock: FrameClock, atMs: number, presented: number): F
     return { ...clock, last: atMs, presented, settling: false }
   }
   const step = atMs - last
-  if (step > STALL_FRAMES * clock.interval) {
+  const stall = Number.isFinite(clock.interval) ? STALL_FRAMES * clock.interval : STALL_UNKNOWN_MS
+  if (step > stall) {
     return { ...clock, last: atMs, presented }
   }
   const frames = Math.max(1, presented - clock.presented)
@@ -143,32 +161,47 @@ export function frameTick(clock: FrameClock, atMs: number, presented: number): F
 }
 
 /**
- * The clock after a seek (the loop's own, a key, the pointer): the next callback's step
- * is not a frame step, and the one after it is settling. What was learned of the cadence stays.
+ * The clock after a seek (the loop's own, a key, the pointer) or at a resumed play: the next
+ * callback's step is not a frame step, and the one after it is settling. What was learned of
+ * the cadence stays.
  */
 export function frameSeeked(clock: FrameClock): FrameClock {
   return { ...clock, last: null, settling: true }
 }
 
+/** The middle of `steps` (the upper one of two), so one odd step among them does not count. */
+function median(steps: readonly number[]): number {
+  const sorted = [...steps].sort((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)] as number
+}
+
 /**
- * How far ahead of the shown frame the frame loop looks for a cut: the last step, at
- * least two frame intervals (a browser that drops the frame just before a cut), and at
- * least the widest of the recent steps plus one interval (an off-cycle callback can leave
- * a gap that long to the cut's first frame). The whole is capped at
- * `LOOKAHEAD_CAP_FRAMES` intervals. Zero while no step is known.
+ * How far ahead of the shown frame the frame loop looks for a cut: the gap to the next
+ * callback, as far as the recent ones tell. It is the larger of the last step and the
+ * typical (median) recent step plus one frame interval, capped at `LOOKAHEAD_CAP_FRAMES`
+ * intervals. The extra interval covers a callback that comes one frame late: a dropped
+ * frame at a browser that calls back on every frame, a missing or off-cycle callback at
+ * one that calls back every second frame (920, 940, then 1000, when 960 was expected),
+ * none of which shows before it happens. The median leaves one odd step among the last
+ * eight out, so a steady cadence is not looked past once for each outlier near a cut.
+ * Until `MIN_STEPS` steps are counted it is `UNKNOWN_LOOKAHEAD_MS`. The cadence is kept
+ * over seeks and over pause and play of a clip.
  *
- * Cost, in kept frames before a cut that go unshown: one on a browser that calls back on
- * every frame; one callback gap on one that skips frames (two at every second frame);
- * for the first few callbacks after the start, up to three if a startup gap got counted
- * as a step, and never more than the cap allows however long a stall lasted.
+ * Cost, in kept frames just before a cut that go unshown: one on a browser that calls
+ * back on every frame, also with a dropped frame among its last eight callbacks; one or
+ * two on one that calls back every second frame (two for a cut on half the cycle's
+ * phases), also with an off-cycle callback among them; at most `UNKNOWN_LOOKAHEAD_MS` of
+ * footage before a cut near the start of a clip's first play; never more than the cap
+ * allows however long a stall lasted. Not covered: a callback more than a frame later than
+ * the typical step (a whole callback missing at a browser that calls back every second
+ * frame) or two late ones in a row, within a callback gap of a cut; its cut frame is shown.
  */
 export function frameLookahead(clock: FrameClock): number {
-  if (clock.step === 0) {
-    return 0
+  if (clock.recent.length < MIN_STEPS) {
+    return UNKNOWN_LOOKAHEAD_MS
   }
-  const { interval } = clock
-  const widest = Math.max(...clock.recent)
-  const wanted = Math.max(clock.step, 2 * interval, widest + interval)
+  const { interval, step } = clock
+  const wanted = Math.max(step, median(clock.recent) + interval)
   return Math.min(wanted, LOOKAHEAD_CAP_FRAMES * interval)
 }
 
@@ -184,8 +217,31 @@ function firstFootage(spans: readonly Skip[], lengthMs: number): number | null {
 /**
  * Where Play starts: `atMs`, a span's end, the first footage from 0 (also when `atMs` is
  * within `END_SLACK_MS` of the end, or inside a span that runs to the end), or null (all cut).
+ * The loop cannot act before its first callback, so a cut that starts within `aheadMs` of
+ * the start (the loop's lookahead, `frameLookahead`) is jumped as the loop would at a
+ * callback there: to its end, or, when it runs to the end, to the first footage.
  */
-export function playFrom(spans: readonly Skip[], atMs: number, lengthMs: number): number | null {
+export function playFrom(
+  spans: readonly Skip[],
+  atMs: number,
+  lengthMs: number,
+  aheadMs = 0,
+): number | null {
+  let from = playFromAt(spans, atMs, lengthMs)
+  for (let jumps = 0; from !== null && aheadMs > 0 && jumps <= spans.length; jumps += 1) {
+    const action = skipAt(spans, from, aheadMs, lengthMs)
+    if (action === null) {
+      return from
+    }
+    if ('stop' in action) {
+      return firstFootage(spans, lengthMs)
+    }
+    from = action.seek
+  }
+  return from
+}
+
+function playFromAt(spans: readonly Skip[], atMs: number, lengthMs: number): number | null {
   if (lengthMs - atMs < END_SLACK_MS) {
     return firstFootage(spans, lengthMs)
   }

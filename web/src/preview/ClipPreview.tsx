@@ -41,6 +41,7 @@ import {
   downloadWords,
   emptyWords,
   formatWords,
+  UNKNOWN_LOOKAHEAD_MS,
   frameLookahead,
   frameSeeked,
   frameTick,
@@ -65,7 +66,7 @@ import {
   toMs,
   unreadableTitle,
 } from './playback'
-import type { NoteWords, SpanKind } from './playback'
+import type { FrameClock, NoteWords, SpanKind } from './playback'
 import type { ClipPreviews } from './previews'
 import {
   PLAY_COPY,
@@ -458,6 +459,11 @@ export const ClipPreview = memo(function ClipPreview({
   )
   // The latest values for the frame loop, which runs outside rendering.
   const loop = useRef({ skip, spans, lengthMs })
+  // What the frame loop learned of this clip's callback cadence, kept across pause and play.
+  const cadence = useRef<{ identity: string; clock: FrameClock }>({
+    identity,
+    clock: newFrameClock(),
+  })
   useEffect(() => {
     loop.current = { skip, spans, lengthMs }
   }, [skip, spans, lengthMs])
@@ -598,10 +604,14 @@ export const ClipPreview = memo(function ClipPreview({
     }
     let handle = 0
     // The callback cadence (`FrameClock`): a browser may call back only about every second
-    // frame, and off its cycle, so the loop looks the gap to the next callback ahead. The
-    // cost is the kept frames just before a cut: one on every-frame callbacks, one
-    // callback gap otherwise, never a cut frame (see `frameLookahead` for the bound).
-    let clock = newFrameClock()
+    // frame, and off its cycle, so the loop looks the gap to the next callback ahead. It is
+    // kept for the clip across pause and play (a resumed play settles, it does not start
+    // blind). The cost is the kept frames just before a cut: one on every-frame callbacks,
+    // one or two on every second frame, never a cut frame (`frameLookahead` has the bounds).
+    if (cadence.current.identity !== identity) {
+      cadence.current = { identity, clock: newFrameClock() }
+    }
+    let clock = frameSeeked(cadence.current.clock)
     // The last target sought: never sought again before playback leaves it, so a
     // frame that straddles a cut's end cannot stall playback.
     let sought: number | null = null
@@ -609,6 +619,7 @@ export const ClipPreview = memo(function ClipPreview({
     const tick = (_now: number, frame: VideoFrameCallbackMetadata) => {
       const at = Math.round(frame.mediaTime * 1000)
       clock = frameTick(clock, at, frame.presentedFrames)
+      cadence.current.clock = clock
       setAtMs(at)
       if (Math.floor(at / 1000) !== spoken) {
         spoken = Math.floor(at / 1000)
@@ -636,6 +647,7 @@ export const ClipPreview = memo(function ClipPreview({
     // frame step, so the clock keeps what it knows and counts no step from the seek.
     const onSeeking = () => {
       clock = frameSeeked(clock)
+      cadence.current.clock = clock
     }
     video.addEventListener('seeking', onSeeking)
     handle = video.requestVideoFrameCallback(tick)
@@ -643,7 +655,7 @@ export const ClipPreview = memo(function ClipPreview({
       video.removeEventListener('seeking', onSeeking)
       video.cancelVideoFrameCallback(handle)
     }
-  }, [playing])
+  }, [playing, identity])
 
   const seekTo = useCallback((ms: number) => {
     const video = videoRef.current
@@ -660,7 +672,11 @@ export const ClipPreview = memo(function ClipPreview({
   function startPlay(video: HTMLVideoElement, total: number | null): void {
     if (skip && total !== null) {
       const now = toMs(video.currentTime)
-      const from = playFrom(skipSpans(cuts, total), now, total)
+      // The first callback comes after the first frame: a cut that starts within the loop's
+      // lookahead of the start is jumped here, as the loop would at a callback there.
+      const known = cadence.current.identity === identity
+      const ahead = known ? frameLookahead(cadence.current.clock) : UNKNOWN_LOOKAHEAD_MS
+      const from = playFrom(skipSpans(cuts, total), now, total, ahead)
       if (from === null) {
         setAllCut(true)
         onAnnounce(ALL_CUT)
