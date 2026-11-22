@@ -52,7 +52,8 @@ export type BinRow = {
   typed: boolean                    // a typed cut waits ("Edit mode lists, adds and removes a clip's cuts")
   onDisk: boolean
 }
-export function binRows(draft: Draft, baseline: Draft, detail: EventDetail, typed: ReadonlySet<string>): BinRow[]
+export function binRows(draft: Draft, baseline: Baseline, detail: EventDetail, typed: ReadonlySet<string>,
+                        lastMoved?: string | null): BinRow[]   // lastMoved breaks the fewest-moves ties, as the top bar does
 export function binOrder(rows: readonly BinRow[]): readonly string[]  // the order Shift+press ranges over
 ```
 - **Groups.** `listed` covers every listed chapter's play order, with missing and excluded clips in their places.
@@ -97,7 +98,7 @@ export function binOrder(rows: readonly BinRow[]): readonly string[]  // the ord
 ### D3. The information (`edit/clipInfo.ts` pure, `edit/ClipInfo.tsx`)
 ```ts
 export function clipInfo(clip: Clip, facts: ProxyFacts | null, cuts: readonly DraftCut[],
-                         place: string | null): InfoLine[]
+                         place: string | null, turn?: Turn): InfoLine[]   // clip: the draft's view (withIgnoreStatus)
 ```
 - **Length.** The detail's duration, else the facts' duration. Null is "unknown", never 0. Kept length subtracts the
   union of the cuts, as the movie stat does.
@@ -110,7 +111,9 @@ export function clipInfo(clip: Clip, facts: ProxyFacts | null, cuts: readonly Dr
   `clip-rotation`'s words when it is set.
 - **Sound.** The codec in capitals ("AAC"), with any `pcm_*` as "PCM". Null gives "No sound".
 - **Size and time** use the page's formats ("Times are written one way on every screen").
-- **Cuts** come from the draft, as the Cuts panel lists them (removed ones left out), in the Cuts panel's time format.
+- **Cuts** come from the draft, as the Cuts panel lists them (removed ones left out): number, span, length and reason,
+  in the Cuts panel's formats.
+- **A missing clip** gets its status, place and cuts only: no size, time, length or proxy line (it has no file).
 - **Without a ready proxy**, one line says that frame rate, picture and sound are known once its proxy is prepared.
 - **Hide information** works as Hide player does (`clip-tab-and-player` D3). The key is `auto-reel:bin-info`, and the
   panel is capped at 30 % of the bin's height, scrolling within itself.

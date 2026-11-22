@@ -1,6 +1,6 @@
 import type { components } from '../api/schema'
 import type { Clip } from '../api/event.ts'
-import { formatTime, keptCuts, reasonWords, spanWords } from '../cuts/times.ts'
+import { formatLength, formatTime, keptCuts, reasonWords, spanWords } from '../cuts/times.ts'
 import { CLIP_STATUS_LABEL, EXCLUDED_LABEL } from '../events/labels.ts'
 import { formatBytes, formatInstant } from '../format.ts'
 import { normalizeTurn, turnWords } from '../rotate/turn.ts'
@@ -154,11 +154,15 @@ function lengthWords(seconds: number | null): string {
 /**
  * The panel's lines for one clip, in the order shown:
  * - `read`: status, chapter and position (`place`, when the clip has one), size, modified, length,
- *   and the kept length when kept cuts shorten it, and the draft's turn when it is set;
+ *   and the kept length when kept cuts shorten it, and the draft's turn when it is set. A clip
+ *   missing from disk has none of size, time or length (it has no file to read them from);
  * - `proxy`: frame rate, picture, container rotation and sound from the ready proxy's `facts`, or
- *   one line saying they wait for the proxy;
+ *   one line saying they wait for the proxy (none for a missing clip: no proxy will be prepared);
  * - `cuts`: each cut the save keeps (removed ones left out), numbered as the Cuts panel
- *   numbers them, in its time format, or "None".
+ *   numbers them, with its span, length and reason in its formats, or "None".
+ *
+ * `clip` is the clip as the draft stands: pass it through `withIgnoreStatus`, so a clip ignored
+ * or included in this Edit mode says what its bin row says. `status` is read from it as given.
  */
 export function clipInfo(
   clip: Clip,
@@ -169,23 +173,28 @@ export function clipInfo(
 ): InfoLine[] {
   const lines: InfoLine[] = []
   const read = (label: string, value: string) => lines.push({ section: 'read', label, value })
+  const missing = clip.status === 'missing'
 
   read('Status', statusWords(clip))
   if (place !== null) {
     read('Chapter', place)
   }
-  read('Size', clip.size == null ? UNKNOWN : formatBytes(clip.size))
-  read('Modified', clip.mtime == null ? UNKNOWN : formatInstant(clip.mtime))
-  const seconds = clipSeconds(clip, facts)
-  read('Length', lengthWords(seconds))
-  if (keptCuts(cuts).length > 0) {
-    read('Kept length', lengthWords(keptSeconds(seconds, cuts)))
+  if (!missing) {
+    read('Size', clip.size == null ? UNKNOWN : formatBytes(clip.size))
+    read('Modified', clip.mtime == null ? UNKNOWN : formatInstant(clip.mtime))
+    const seconds = clipSeconds(clip, facts)
+    read('Length', lengthWords(seconds))
+    if (keptCuts(cuts).length > 0) {
+      read('Kept length', lengthWords(keptSeconds(seconds, cuts)))
+    }
   }
   if (turn !== 0) {
     read('Turn', turnWords(turn))
   }
 
-  if (facts === null) {
+  if (missing) {
+    // No file, so no proxy: nothing to wait for and nothing to say.
+  } else if (facts === null) {
     lines.push({ section: 'proxy', label: 'Proxy', value: AWAITING_PROXY })
   } else {
     const proxy = (label: string, value: string) => lines.push({ section: 'proxy', label, value })
@@ -203,7 +212,11 @@ export function clipInfo(
       return
     }
     const reason = cut.reason == null || cut.reason.trim() === '' ? '' : ` · ${reasonWords(cut.reason)}`
-    lines.push({ section: 'cuts', label: `Cut ${index + 1}`, value: `${spanWords(cut)}${reason}` })
+    lines.push({
+      section: 'cuts',
+      label: `Cut ${index + 1}`,
+      value: `${spanWords(cut)} · ${formatLength(cut.out - cut.in)}${reason}`,
+    })
   })
   if (keptCuts(cuts).length === 0) {
     lines.push({ section: 'cuts', label: 'Cuts', value: 'None' })

@@ -185,7 +185,9 @@ export function binRows(
     })
   }
 
-  for (const chapter of listed) {
+  // Every chapter, a deleted one too: a clip the document ignores stays ignored when its chapter
+  // is deleted here, and the bin lists every clip of the event.
+  for (const chapter of draft.chapters) {
     const order = draft.orders.get(chapter.key) ?? []
     const nameOf = namesIn(
       chapter.name,
