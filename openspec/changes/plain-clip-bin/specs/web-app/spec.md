@@ -26,7 +26,7 @@ move button.
 #### Scenario: A moved clip says where it was
 - **WHEN** on `2024-06-27 - Grillning med grannar` the operator drags `s1710004.mp4` on the track to before
   `s1710001.mp4`
-- **THEN** the bin lists `s1710004.mp4` first, its row reading "Main · 1 of 4 · was 4", and no other row says that
+- **THEN** the bin lists `s1710004.mp4` first, its row reading "Clips · 1 of 4 · was 4", and no other row says that
   it moved
 
 #### Scenario: Rows in view
@@ -67,6 +67,13 @@ which includes it on the track.
   40 px onto the track, and then does the same with the ignored root clip `s1710004.mp4`
 - **THEN** the first press drags nothing and only selects; the second drags `s1710004.mp4`, and releasing it on the
   track includes it there
+
+#### Scenario: The menu opens while the Timeline shows Prepare
+- **WHEN** Edit mode opens on an event with a clip whose proxy is not ready, so that the Timeline shows Prepare and
+  no track, and the operator right-clicks that clip's row, and then presses Shift+F10 on it
+- **THEN** the clip's menu opens each time, with Rotate, Move to…, Ignore clip and the other items that need no
+  track available, and Cut at playhead and Use frame as poster unavailable under "The Timeline does not show
+  <name>."
 
 ### Requirement: The bin shows what the page knows of the shown clip
 
@@ -2232,6 +2239,146 @@ loaded page does, without horizontal scroll from 320 CSS pixels up.
   names the heading `2024-06-27 - Grillning med grannar`, and each placeholder clip row is as tall as a
   loaded row; when the read answers, the heading reads `Grillkväll med grannarna` and the `Clips` table
   starts within 8 pixels of where the placeholder table started
+
+### Requirement: Edit mode saves with Ctrl+S or Cmd+S
+
+While Edit mode has read the event's editorial document, pressing **S** with Ctrl (or Cmd on a Mac), without
+Shift or Alt, SHALL act as the Save control does, from wherever keyboard focus is on the page, including a
+text field, a clip row's control, the header and the page's body. Reaching Save SHALL NOT take a Tab stop
+for every control before it.
+
+The key press SHALL NOT open the browser's own "Save page" dialog, whether or not anything is saved. Before
+the document has been read, and while its read has failed, the press SHALL be left to the browser. A press
+with Shift or Alt, a held key's repeats, and a press during an IME composition SHALL NOT save, and Shift or
+Alt SHALL leave the browser's own meaning of the key alone.
+
+When Save is available, the press SHALL send the same write the Save control sends (the same changes, the
+same version check), SHALL announce "Saving…", and SHALL show the same outcomes: the "Saved" notification and
+the event page when it is written, and the save bar's failure with its choices when it is not. The press
+SHALL NOT move keyboard focus. Save is available under the rules of "Saving an edit writes only what the
+operator changed" and "Edit mode's save bar stays compact and fits the window": the shortcut SHALL NOT
+save in any state where the Save control is held back.
+
+When Save is held back, the press SHALL send nothing and SHALL announce why:
+
+- with nothing to save: "Nothing to save."
+- with a date typed in part, or a cut typed and not added: "Not saved:" and what is unfinished
+- after a conflict: that Reload latest or Overwrite with mine comes first
+- after the event is found gone: that the event no longer exists
+- while a clip is lifted by the drag and not yet dropped or cancelled: that the lifted clip comes first
+  ("Not saved: drop or cancel the lifted clip first."), because the order shown is not yet the order that
+  a write would carry
+
+While a save is in flight, while a move of the selected clips is still being applied, or while a dialog is open (including
+the question "Discard unsaved changes?" and the confirmation of Overwrite with mine), the press SHALL send
+nothing and say nothing. It SHALL NOT answer a dialog's question.
+
+The Save control SHALL name the shortcut to assistive technology and in its tooltip, and the bar SHALL NOT
+show more text for it.
+
+#### Scenario: Saving from the first field
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator changes the location in the
+  location field and, with keyboard focus still in that field, presses Ctrl+S
+- **THEN** exactly one write is sent with the changed location, the live region says "Saving…", the browser's
+  Save page dialog does not open, and the event page shows with a "Saved" notification
+
+#### Scenario: Saving after a keyboard reorder without tabbing
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator presses the bin row of its first
+  clip, presses Move later in the Clip tab, and with focus still on Move later presses Cmd+S (the meta key)
+- **THEN** one write is sent with the new clip order, and no Tab was pressed between the move and the save
+
+#### Scenario: Nothing has changed
+- **WHEN** in Edit mode on `2024-08-02 - Badutflykt - Varberg`, with no edit made, the operator presses Ctrl+S
+- **THEN** no request is sent, the live region says "Nothing to save.", and the browser's Save page dialog
+  does not open
+
+#### Scenario: A date typed in part
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator changes the location, clears
+  the date's year and presses Ctrl+S
+- **THEN** no request is sent, the live region says that the date is incomplete and that nothing was saved,
+  and the Save control is still unavailable
+
+#### Scenario: After a conflict the shortcut waits like Save
+- **WHEN** in Edit mode on `2024-06-27 - Grillning med grannar`, the operator changes the location, the
+  event's `reel.yaml` is changed by hand, the operator saves and the save bar shows the conflict, and then
+  the operator presses Ctrl+S
+- **THEN** no request is sent, the live region says that Reload latest or Overwrite with mine comes first,
+  and the confirmation of Overwrite with mine does not open
+
+#### Scenario: A failed shortcut save keeps the field and the edits
+- **WHEN** in Edit mode on `2024-08-02 - Badutflykt - Varberg`, the operator edits the title, presses Ctrl+S
+  in the title field, and the request gets no answer
+- **THEN** the save bar says that the service is not reachable and offers Retry, the edit is kept, and
+  keyboard focus is still in the title field
+
+#### Scenario: A second press during the save does nothing
+- **WHEN** the operator presses Ctrl+S, and presses it again, and again as a held key repeats, before the
+  service has answered the first
+- **THEN** exactly one write is sent, and "Saving…" is announced once
+
+#### Scenario: A dialog's question is not answered
+- **WHEN** in Edit mode with unsaved changes, the operator presses Refresh so that "Discard unsaved
+  changes?" opens, and presses Ctrl+S
+- **THEN** no request is sent, nothing is announced, the dialog stays open with focus on Keep editing, and
+  the edits are kept
+
+#### Scenario: A lifted clip is not saved at its old place
+- **WHEN** in Edit mode on `2024-08-20 - Två kapitel - Tjörn`, the operator changes the location, presses the bin
+  row of the ignored root clip `s1710004.mp4`, moves the pointer 40 px onto the track and, before releasing it,
+  presses Ctrl+S
+- **THEN** no request is sent, the live region says that the lifted clip must be dropped or cancelled first,
+  and the clip is still lifted; after the release on the track, Ctrl+S sends one write with the location and the
+  clip's inclusion
+
+#### Scenario: Other chords keep their meaning
+- **WHEN** in Edit mode with unsaved changes, the operator presses Ctrl+Shift+S
+- **THEN** the page does not save, and does not cancel the browser's own handling of the key
+
+#### Scenario: The shortcut is named
+- **WHEN** an unsaved change brings in the save bar
+- **THEN** its Save control has the keyboard shortcut Control+S (Meta+S) declared to assistive technology,
+  its tooltip reads "Save (Ctrl+S, or ⌘S on a Mac)", and the bar is not taller or wider than before at
+  390 × 844
+
+### Requirement: An unavailable item in the clip menu says why
+
+An item that cannot act SHALL stay listed, shown as unavailable in more than colour and to assistive technology, with
+its reason in words under it, as the Clip tab words it. While a save or a move of several clips (Move to…) is
+pending, every item SHALL be unavailable under one line that says so. Choosing an unavailable item SHALL say
+its reason once through the polite status, change nothing, and keep the menu open.
+
+#### Scenario: The playhead is in another clip
+- **WHEN** the playhead is in `s1710001.mp4` and the operator opens the menu of `s1710002.mp4`
+- **THEN** Cut at playhead is unavailable under "Move the playhead into s1710002.mp4 to cut there.", Use frame as
+  poster is unavailable under "Move the playhead into s1710002.mp4 to use a frame as poster.", and the other items
+  are available
+
+#### Scenario: During a save
+- **WHEN** a save is pending, the operator opens a clip's menu and presses Enter on Rotate right
+- **THEN** every item is unavailable under "Clip edits wait for the save or the move of several clips to finish.",
+  those words are announced, the clip is not turned, and the menu stays open
+
+### Requirement: The Event tab lists the event's chapters
+
+The inspector's Event tab SHALL hold a **Chapters** list after the Details form: one row per chapter, in the draft's
+order, with the chapter's name and clip count and its tools, a deleted chapter's row until Save, and Add chapter
+after the last row. It SHALL work whether or not the Timeline's track is open, and SHALL be the only place in Edit
+mode that adds, moves or deletes a chapter ("Edit mode adds, renames, reorders and deletes chapters").
+
+#### Scenario: Chapters while proxies are being prepared
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` while its Timeline shows Prepare and no track
+- **THEN** the Event tab lists `Main` (1 clip) and `Kvällen` (3 clips) with their tools and Add chapter, and moving
+  `Kvällen` up works
+
+#### Scenario: An empty chapter is listed
+- **WHEN** the operator adds a chapter `Morgon` to `2024-08-20 - Två kapitel - Tjörn`
+- **THEN** the Event tab lists `Morgon` last, counting 0 clips, saying that it has no clips and is left out of the
+  movie, although the Timeline draws no band and no card for it
+
+#### Scenario: The bin holds no chapter tool
+- **WHEN** Edit mode opens on `2024-08-20 - Två kapitel - Tjörn` in a 1280×720 window
+- **THEN** the bin has no chapter heading, no chapter name or count and no button on a row, and offers no Add
+  chapter
 
 ## REMOVED Requirements
 
