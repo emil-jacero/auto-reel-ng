@@ -47,7 +47,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 - [x] 2.4 `ClipInfo` and its Hide information preference (design D3). Verify in Playwright with the scenarios of "The
   bin shows what the page knows of the shown clip". Check the request log: selecting clips makes thumbnail requests
   only.
-- [ ] 2.5 Delete the old bin (design D6): the components and modules, the marks' actions and words, and the Clips help
+- [x] 2.5 Delete the old bin (design D6): the components and modules, the marks' actions and words, and the Clips help
   words. Remove `@dnd-kit` if nothing imports it, and update the dependency test. Verify with `npm test`, `npm run
   check` and `npm run build`, and report the bundle's change in kB. `grep -rn "Move marked\|Clear marks" web/src`
   must find nothing.

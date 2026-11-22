@@ -347,10 +347,9 @@ src/
 │   └── proxies.test.ts   the filmstrip address and every answer of POST …/proxies (npm test)
 ├── edit/
 │   ├── EventEditor.tsx   Edit mode: the reel read, chapter edits, the save bar, saves and failures
-│   ├── ChapterDrag.tsx   the one drag context around every chapter: sensors, targets, the copy, words, focus
-│   ├── dragSlots.ts      where a dragged clip can land: slots, keyboard steps, pointer targets; a gap mode while a marked group is held (pure)
-│   ├── marks.ts          Edit mode's marks: toggling, pruning, Pick marked, the words spoken (pure; marks.test.ts, groupMove.test.ts)
-│   ├── ClipOrderList.tsx one chapter's clips: its sortable list, a drop target, buttons; Remove / Undo
+│   ├── ClipBin.tsx       the bin: one plain listbox of every clip, its menu, selection and the ignored row's drag (`plain-clip-bin`)
+│   ├── binList.ts        the bin's rows, groups, places and moved words (pure; binList.test.ts)
+│   ├── moveWords.ts      what a move says and why a move control waits (pure; moveWords.test.ts)
 │   ├── ChapterTools.tsx  a chapter's tools row, a deleted chapter's placeholder, Add chapter
 │   ├── ChapterDialogs.tsx the name dialog (Add chapter) and Move clips
 │   ├── EditTitlecard.tsx the chapter header bar's Edit Titlecard button (selects the card and asks the docked editor to open)
@@ -363,7 +362,7 @@ src/
 │   ├── draft.ts          the edit model: chapters, write body, moved, removed and trimmed cuts, dirty (pure, + trimCut.test.ts)
 │   ├── unsaved.ts        the unsaved-changes guard and its question
 │   ├── chapters.css      the chapter tools, the deleted placeholder and the chapter dialogs
-│   ├── drag.css          the dragged copy, the line where a drop lands, an empty chapter's area
+│   ├── clipBin.css       the bin's header, rows and captions
 │   └── edit.css          Edit mode's fields, rows and save bar
 ├── cuts/
 │   ├── times.ts          typed times read and written, a cut's checks, the cut words and reasons (pure, + times.test.ts)
@@ -721,10 +720,10 @@ HLD §7).
 
 ## Dependency budget
 
-`react`, `react-dom`, the one drag-and-drop library — `@dnd-kit/core`,
-`@dnd-kit/sortable` and `@dnd-kit/utilities`, the legacy line, added by the reorder
-slice (D-8) — `vite`, `@vitejs/plugin-react`, `typescript`, and `openapi-typescript`
-(dev). **No component library, no CSS framework, no router, and no state-management
+`react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `typescript`, and
+`openapi-typescript` (dev). The drag-and-drop library (`@dnd-kit`, added by the reorder
+slice, D-8) left with the old bin (`plain-clip-bin`): the bin's one drag and the track's
+are pointer code of this repo. **No component library, no CSS framework, no router, and no state-management
 or data-fetching library at GUI v1.** Any addition must be justified in the proposal
 of the slice that demonstrably needs it. The design system adds nothing to it.
 
