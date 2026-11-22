@@ -5,7 +5,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate: `clip-tab-and-player` MUST be archived, and both of these must succeed from the repo root:
+- [x] 0.1 Dependency gate: `clip-tab-and-player` MUST be archived, and both of these must succeed from the repo root:
   - `ls -d openspec/changes/archive/*-clip-tab-and-player`
   - `grep -q "Requirement: The Clip tab offers a clip's edits whether or not the track draws it" openspec/specs/web-app/spec.md`
 
