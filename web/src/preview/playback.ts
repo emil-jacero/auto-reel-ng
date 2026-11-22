@@ -75,24 +75,101 @@ export function skipAt(
   return toEnd(span, lengthMs) ? { stop: span.from } : { seek: span.to }
 }
 
-/** The largest gap, in frame intervals, the loop reckons with between two frame callbacks. */
-const WIDEST_GAP_FRAMES = 4
+/** The most recent steps between callbacks the loop remembers (see `FrameClock`). */
+const GAP_WINDOW = 8
+
+/** A step wider than this many frame intervals is a stall, not cadence: it is not counted. */
+const STALL_FRAMES = 6
+
+/** The most the loop looks ahead, in frame intervals, however wide the steps seem. */
+const LOOKAHEAD_CAP_FRAMES = 4
 
 /**
- * How far ahead of the shown frame the frame loop looks for a cut: `stepMs` (the last
- * step between callbacks), at least two frame intervals, and at least the widest step
- * seen since the last seek plus one interval. A browser that calls back only about every
- * second frame, and sometimes off its cycle, can leave a longer gap before the cut's
- * first frame than the last step shows; the loop must seek one callback earlier then.
- * The widest step counts up to `WIDEST_GAP_FRAMES` intervals, so one stall cannot cost
- * much kept footage. Zero while no step is known (`stepMs` 0).
+ * What the frame loop knows of the browser's callback cadence, kept by `frameTick`. The
+ * loop may only act on a frame it is called for, and a browser need not call for every
+ * frame (Firefox: about every second one, and sometimes off its cycle), so the loop
+ * must reckon with the gap to the next callback.
  */
-export function skipLookahead(stepMs: number, intervalMs: number, widestMs: number): number {
-  if (stepMs === 0) {
+export interface FrameClock {
+  /** The last callback's media time in ms; null at the start and after a seek. */
+  last: number | null
+  /** The last callback's `presentedFrames`. */
+  presented: number
+  /** True until the first step after the start or a seek has gone by: it is not counted. */
+  settling: boolean
+  /** The last step between two callbacks in ms; 0 while none is known. */
+  step: number
+  /** The clip's frame interval in ms: the shortest step per presented frame; Infinity until seen. */
+  interval: number
+  /** The most recent steps between callbacks, oldest first (at most `GAP_WINDOW`). */
+  recent: readonly number[]
+}
+
+/** The clock of a loop that has seen no callback. */
+export function newFrameClock(): FrameClock {
+  return { last: null, presented: 0, settling: true, step: 0, interval: Infinity, recent: [] }
+}
+
+/**
+ * The clock after a callback for the frame at `atMs` with `presented` frames presented so
+ * far. A step is the time since the previous callback; it is left out of the cadence when
+ * it is the first one after the start or a seek (the decoder is still settling: a startup
+ * or seek gap says nothing of the cadence) or wider than `STALL_FRAMES` frame intervals
+ * (a stall, GC pause, or a background tab: the cut it would reach is not that near). The
+ * frame interval is the shortest step per frame presented in it, so a browser that calls
+ * back every second frame still gives the true interval.
+ */
+export function frameTick(clock: FrameClock, atMs: number, presented: number): FrameClock {
+  const { last } = clock
+  if (last === null || atMs <= last) {
+    return { ...clock, last: atMs, presented }
+  }
+  if (clock.settling) {
+    return { ...clock, last: atMs, presented, settling: false }
+  }
+  const step = atMs - last
+  if (step > STALL_FRAMES * clock.interval) {
+    return { ...clock, last: atMs, presented }
+  }
+  const frames = Math.max(1, presented - clock.presented)
+  return {
+    last: atMs,
+    presented,
+    settling: false,
+    step,
+    interval: Math.min(clock.interval, step / frames),
+    recent: [...clock.recent, step].slice(-GAP_WINDOW),
+  }
+}
+
+/**
+ * The clock after a seek (the loop's own, a key, the pointer): the next callback's step
+ * is not a frame step, and the one after it is settling. What was learned of the cadence stays.
+ */
+export function frameSeeked(clock: FrameClock): FrameClock {
+  return { ...clock, last: null, settling: true }
+}
+
+/**
+ * How far ahead of the shown frame the frame loop looks for a cut: the last step, at
+ * least two frame intervals (a browser that drops the frame just before a cut), and at
+ * least the widest of the recent steps plus one interval (an off-cycle callback can leave
+ * a gap that long to the cut's first frame). The whole is capped at
+ * `LOOKAHEAD_CAP_FRAMES` intervals. Zero while no step is known.
+ *
+ * Cost, in kept frames before a cut that go unshown: one on a browser that calls back on
+ * every frame; one callback gap on one that skips frames (two at every second frame);
+ * for the first few callbacks after the start, up to three if a startup gap got counted
+ * as a step, and never more than the cap allows however long a stall lasted.
+ */
+export function frameLookahead(clock: FrameClock): number {
+  if (clock.step === 0) {
     return 0
   }
-  const widest = Math.min(widestMs, WIDEST_GAP_FRAMES * intervalMs) + intervalMs
-  return Math.max(stepMs, 2 * intervalMs, widest)
+  const { interval } = clock
+  const widest = Math.max(...clock.recent)
+  const wanted = Math.max(clock.step, 2 * interval, widest + interval)
+  return Math.min(wanted, LOOKAHEAD_CAP_FRAMES * interval)
 }
 
 /** The clip's first footage outside every span, or null when the spans cover it all. */
