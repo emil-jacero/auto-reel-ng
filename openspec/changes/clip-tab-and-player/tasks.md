@@ -114,5 +114,5 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
     player.
   - §6 item 10: this change is built.
   - `docs/editor-workspace.md`: add a row for `clip-tab-and-player`.
-- [ ] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate clip-tab-and-player
+- [x] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate clip-tab-and-player
   --strict`.
