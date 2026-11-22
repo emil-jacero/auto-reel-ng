@@ -1794,7 +1794,8 @@ removed renames nothing until the edits are saved. The same name SHALL be used i
 these places:
 
 - the clip's row in the bin
-- the names of the controls that act on it: in its Clip tab and in its menu
+- the names of the controls that act on it: in its Clip tab and in its menu. A Clip tab button's name starts
+  with its visible words and ends with the clip's name, as in "Move later: Kvällen/s1710004.mp4"
 - what Edit mode announces about the clip
 
 Moving a clip within its chapter, or removing one, SHALL NOT change how its chapter names its clips. Two edits
@@ -1811,7 +1812,7 @@ service resolves from the folder name.
   chapter after `s1710001.mp4`, and the operator opens Edit mode
 - **THEN** the bin names `Main`'s clips `s1710001.mp4` and `Kvällen/s1710004.mp4`, and its ignored clip
   `s1710004.mp4`, as the page's table named them, and with the second selected the Clip tab's Move later is named
-  "Move Kvällen/s1710004.mp4 later"
+  "Move later: Kvällen/s1710004.mp4"
 
 #### Scenario: The saved event is named by its title and date
 - **WHEN** the operator changes the location of `2024-06-27 - Grillning med grannar` in Edit mode and saves
@@ -1821,8 +1822,8 @@ service resolves from the folder name.
 #### Scenario: A clip moved in from another folder is named by its path
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator moves `s1710002.mp4` from `Kvällen` to `Main`
 - **THEN** the bin names `Main`'s clips `s1710001.mp4` and `Kvällen/s1710002.mp4`, and its ignored clip
-  `s1710004.mp4`, and with the second selected the Clip tab's Move earlier is named "Move Kvällen/s1710002.mp4
-  earlier"
+  `s1710004.mp4`, and with the second selected the Clip tab's Move earlier is named
+  "Move earlier: Kvällen/s1710002.mp4"
 
 #### Scenario: A renamed chapter names its clips by their paths
 - **WHEN** on `2024-08-20 - Två kapitel - Tjörn`, the operator renames `Kvällen` to `Kväll`
