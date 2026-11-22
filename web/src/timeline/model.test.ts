@@ -576,14 +576,11 @@ describe('cut spans and rectangles', () => {
 describe('purity and dependencies', () => {
   const root = new URL('../../', import.meta.url)
 
-  it('the dependencies stay React, React DOM and the three dnd-kit packages', () => {
+  it('the dependencies stay React and React DOM', () => {
     const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8')) as {
       dependencies: Record<string, string>
     }
     assert.deepEqual(Object.keys(pkg.dependencies).sort(), [
-      '@dnd-kit/core',
-      '@dnd-kit/sortable',
-      '@dnd-kit/utilities',
       'react',
       'react-dom',
     ])
