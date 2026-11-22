@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import {
   CHOOSE_CHAPTER_WORDS,
+  GROUP_DROP_WORDS,
   MOVING_WORDS,
   NOTHING_IGNORED,
   NOTHING_MOVED,
@@ -22,5 +23,11 @@ describe('the words of a move', () => {
     assert.equal(SAVING_WORDS, 'Unavailable while saving.')
     assert.equal(CHOOSE_CHAPTER_WORDS, 'Choose a chapter.')
     assert.equal(MOVING_WORDS, 'Unavailable while the clips move.')
+  })
+
+  it('say that a group is not dropped on the track, and where Include clips is', () => {
+    assert.ok(GROUP_DROP_WORDS.includes('cannot be dropped on the video track'))
+    assert.ok(GROUP_DROP_WORDS.includes('Nothing moved.'))
+    assert.ok(GROUP_DROP_WORDS.includes('Include clips in the Clip tab'))
   })
 })
