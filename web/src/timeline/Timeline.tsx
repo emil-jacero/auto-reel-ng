@@ -69,6 +69,7 @@ import type { Press } from '../edit/workspace/selection.ts'
 import { stepSlot } from './keys'
 import { dropSlot, includeSlot } from './reorder'
 import type { DrawnChapter } from './reorder'
+import type { ClipState } from '../edit/clipInspector'
 import type { ClipMenuOpen, EditBinding } from './editing'
 import { selectionStands } from './handles'
 import type { KeyAction } from './keys'
@@ -137,6 +138,12 @@ function menuIcon(action: ClipAction): IconName {
       return 'arrow-right'
     case 'ignore':
       return 'eye-off'
+    case 'include':
+      return 'plus'
+    case 'remove':
+      return 'x'
+    case 'restore':
+      return 'rotate-ccw'
   }
 }
 
@@ -1248,6 +1255,8 @@ export function useTimeline({
     open: ClipMenuOpen
     cutWhy: string | null
     posterWhy: string | null
+    /** The clip's state when the menu opened: a change (an Undo, a Reset) closes it. */
+    state: ClipState | null
   } | null>(null)
   const menuCount = useRef(0)
   // Where focus goes once the menu is gone (a layout effect: never onto a node about to unmount).
@@ -1261,6 +1270,11 @@ export function useTimeline({
     Array.from(
       scroller.current?.querySelectorAll<HTMLElement>('.tl-clip-press[data-identity]') ?? [],
     ).find((block) => block.dataset.identity === identity) ?? null
+  /** The bin's row of a clip, in the list that shows now. */
+  const rowOf = (identity: string): HTMLElement | null =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="option"][data-identity]')).find(
+      (row) => row.dataset.identity === identity && row.closest('[hidden]') === null,
+    ) ?? null
   /** The clip's block, else the track: focus never falls to the page's body. */
   const focusBlock = (identity: string | null) => {
     ;(identity === null ? scroller.current : (blockOf(identity) ?? scroller.current))?.focus({
@@ -1271,16 +1285,25 @@ export function useTimeline({
     const made = cutAtClipPlayhead({ clip, clips, editing, playhead })
     return made.ok ? null : made.words
   }
+  // A clip the track does not draw (ignored, missing, removed, or any clip while it prepares) has its
+  // menu too (`plain-clip-bin` D5): its facts come from the editor's draft, its track reasons are words.
   const openClipMenu = (open: ClipMenuOpen): boolean => {
     const clip = clips.find((c) => c.identity === open.identity)
-    if (clip === undefined) {
+    const known = editing.menuFacts().clip(open.identity)
+    if (known === null) {
       return false
     }
     if (menuSelects(selection.selection, open.identity)) {
       selectClip(open.identity)
     }
     menuCount.current += 1
-    setMenu({ id: menuCount.current, open, cutWhy: cutWhyFor(clip), posterWhy: posterWhyFor(clip) })
+    setMenu({
+      id: menuCount.current,
+      open,
+      cutWhy: clip === undefined ? null : cutWhyFor(clip),
+      posterWhy: clip === undefined ? null : posterWhyFor(clip),
+      state: known.state,
+    })
     return true
   }
   // The bin's rows open the same menu: the latest closure, while this is mounted.
@@ -1317,12 +1340,16 @@ export function useTimeline({
       case 'tab':
       case 'choice':
         menuFocus.current = () => {
-          // A menu opened from a bin row gives focus back to the row, while it is still there.
-          if (focusOn === undefined && invoker.isConnected && invoker.getAttribute('role') === 'option') {
-            invoker.focus({ preventScroll: true })
-          } else {
-            focusBlock(focusOn === undefined ? identity : focusOn)
+          // A menu opened from a bin row gives focus back to the row, which may have moved to
+          // another group of the list (a removal, an inclusion): found again by its clip.
+          if (focusOn === undefined && invoker.getAttribute('role') === 'option') {
+            const row = invoker.isConnected ? invoker : rowOf(identity)
+            if (row !== null) {
+              row.focus({ preventScroll: true })
+              return
+            }
           }
+          focusBlock(focusOn === undefined ? identity : focusOn)
         }
         return
       case 'outside':
@@ -1346,8 +1373,10 @@ export function useTimeline({
         return
     }
   }
-  // Its clip leaving the track (Undo, a Reset) closes it.
-  const menuClipGone = menu !== null && !clips.some((c) => c.identity === menu.open.identity)
+  // Its clip leaving the event, or changing state (an Undo, a Reset), closes it.
+  const menuFactsNow = menu === null ? null : editing.menuFacts()
+  const menuInfo = menu === null ? null : (menuFactsNow?.clip(menu.open.identity) ?? null)
+  const menuClipGone = menu !== null && (menuInfo === null || menuInfo.state !== menu.state)
   useEffect(() => {
     if (menuClipGone) {
       closeMenu('gone', null)
@@ -1356,27 +1385,32 @@ export function useTimeline({
   }, [menuClipGone])
   const menuClip = menu === null ? undefined : clips.find((c) => c.identity === menu.open.identity)
   // The clips the menu acts on: the selected clips when it was opened on one of two or more, else
-  // the clip alone (`clip-multi-select` D7).
+  // the clip alone (`clip-multi-select` D7). Taken in the bin's order, which holds ignored clips too.
   const menuTargets =
-    menu === null || menuClip === undefined
+    menu === null || menuInfo === null || menuFactsNow === null
       ? []
-      : targets(
-          selection.selection,
-          menuClip.identity,
-          clips.map((c) => c.identity),
-        )
+      : targets(selection.selection, menu.open.identity, menuFactsNow.order)
   const menuView =
-    menu === null || menuClip === undefined
+    menu === null || menuInfo === null || menuFactsNow === null
       ? null
       : clipMenu({
           locked: editing.locked,
           cutWhy: menu.cutWhy,
           posterWhy: menu.posterWhy,
-          // Several clips may be gathered at the end of any chapter, their own included.
-          others: reorder.chapters
-            .filter((chapter) => menuTargets.length > 1 || !chapter.identities.includes(menuClip.identity))
-            .map((chapter) => ({ key: chapter.key, name: chapter.name ?? '' })),
+          // Several clips may be gathered at the end of any chapter, their own included. A clip the
+          // track draws lists the chapters the track draws; any other the chapters the draft lists.
+          others:
+            menuClip === undefined
+              ? menuInfo.chapters.filter((chapter) => menuTargets.length > 1 || chapter.key !== menuInfo.own)
+              : reorder.chapters
+                  .filter((chapter) => menuTargets.length > 1 || !chapter.identities.includes(menuClip.identity))
+                  .map((chapter) => ({ key: chapter.key, name: chapter.name ?? '' })),
           targets: menuTargets,
+          name: menuInfo.name,
+          state: menuInfo.state,
+          drawn: menuClip !== undefined,
+          played: menuTargets.filter((id) => menuFactsNow.clip(id)?.state !== 'ignored').length,
+          ignored: menuTargets.filter((id) => menuFactsNow.clip(id)?.state === 'ignored').length,
         })
   // Move to… for one clip (the menu's and the Clip tab's): the clip at the end of the chapter, the
   // edit a drop on that chapter's band makes.
@@ -1400,7 +1434,7 @@ export function useTimeline({
   // edit the Clip tab's control makes (D2) and the menu closes, focus going where D5 says.
   const chooseMenuItem = (index: number) => {
     const item = menuView?.items[index]
-    if (item === undefined || menuClip === undefined) {
+    if (item === undefined || menu === null || menuInfo === null) {
       return
     }
     if (item.why !== null) {
@@ -1408,7 +1442,7 @@ export function useTimeline({
       return
     }
     const clip = menuClip
-    const identity = clip.identity
+    const identity = menu.open.identity
     // The playhead's reasons are taken again now: Play may have moved it since the menu opened.
     const refused = (cutWhy: string | null, posterWhy: string | null) =>
       setMenu((was) => (was === null ? was : { ...was, cutWhy, posterWhy }))
@@ -1432,9 +1466,16 @@ export function useTimeline({
           closeMenu('choice', null, next)
           return
         }
-        // Not reached: Cut and Poster are unavailable for several clips, so `item.why` stopped them.
+        // The clips stay selected, and the row the menu opened on takes focus back (it is played now).
+        case 'include':
+          editing.onIncludeMany(menuTargets)
+          break
+        // Not reached: Cut and Poster are unavailable for several clips, so `item.why` stopped them;
+        // Remove and Undo remove are listed for one clip only.
         case 'cut':
         case 'poster':
+        case 'remove':
+        case 'restore':
           return
       }
       closeMenu('choice', null)
@@ -1445,19 +1486,28 @@ export function useTimeline({
         editing.onRotate(identity, action.way)
         break
       case 'cut':
-        if (addCutAtPlayhead({ clip, clips, editing, playhead }) !== null) {
-          refused(cutWhyFor(clip), posterWhyFor(clip))
+        // Not reached for a clip the track does not draw: `item.why` stopped it.
+        if (clip === undefined || addCutAtPlayhead({ clip, clips, editing, playhead }) !== null) {
+          if (clip !== undefined) {
+            refused(cutWhyFor(clip), posterWhyFor(clip))
+          }
           return
         }
         break
       case 'poster':
-        if (!usePoster('-menu', clip)) {
-          refused(cutWhyFor(clip), posterWhyFor(clip))
+        if (clip === undefined || !usePoster('-menu', clip)) {
+          if (clip !== undefined) {
+            refused(cutWhyFor(clip), posterWhyFor(clip))
+          }
           return
         }
         break
       case 'move':
-        moveToEnd(identity, action.chapter)
+        if (clip === undefined) {
+          editing.onMoveToEnd(identity, action.chapter)
+        } else {
+          moveToEnd(identity, action.chapter)
+        }
         break
       case 'ignore': {
         const next = focusAfter(
@@ -1468,6 +1518,17 @@ export function useTimeline({
         closeMenu('choice', null, next)
         return
       }
+      // The three status items make the edit the Clip tab's end button makes; focus goes back to
+      // the clip's row, which has moved to another group of the list.
+      case 'include':
+        editing.onInclude(identity)
+        break
+      case 'remove':
+        editing.onRemoveClip(identity)
+        break
+      case 'restore':
+        editing.onRestoreClip(identity)
+        break
     }
     closeMenu('choice', null)
   }
@@ -1690,11 +1751,11 @@ export function useTimeline({
 
       {menu !== null &&
         menuView !== null &&
-        menuClip !== undefined &&
+        menuInfo !== null &&
         createPortal(
           <Menu
             key={menu.id}
-            title={menuView.title ?? menuClip.name}
+            title={menuView.title ?? menuInfo.name}
             note={menuView.note}
             items={menuView.items.map((item) => ({
               label: item.label,

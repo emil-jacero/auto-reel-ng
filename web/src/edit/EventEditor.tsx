@@ -52,7 +52,7 @@ import { draftSpec } from './card/specs.ts'
 import { draftEventStyle, previewStyle, readStyle, styleRefusalOf } from './cardStyle.ts'
 import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
-import type { EditBinding, MenuBridge, TrackBridge } from '../timeline/editing'
+import type { EditBinding, MenuBridge, MenuFacts, TrackBridge } from '../timeline/editing'
 import { applyDrop, includeIndex } from '../timeline/reorder'
 import { MOVE_LOCKED } from '../timeline/clipDrag'
 import { focusAfterMany } from '../timeline/clipMenu'
@@ -102,7 +102,7 @@ import { ClipBin } from './ClipBin'
 import type { BinHandlers } from './ClipBin'
 import { binRows } from './binList.ts'
 import { stepMove } from './stepMove.ts'
-import { selectionLabel, selectionStep } from './selectionEdit.ts'
+import { NOTHING_INCLUDED, includedBy, selectionLabel, selectionStep } from './selectionEdit.ts'
 import type { SelectionEdit } from './selectionEdit.ts'
 import type { IncludeHandler } from './ClipOrderList'
 import {
@@ -456,6 +456,7 @@ function describeEdit(action: Action, before: Ready): { label: string; key: stri
     case 'selection-move':
     case 'selection-drop':
     case 'ignore-many':
+    case 'include-many':
       return { label: selectionLabel(action, before), key: null }
     case 'remove':
       return { label: `removal of ${clipName(action.identity)}`, key: null }
@@ -727,7 +728,8 @@ function step(state: State, action: Action): State {
     }
     case 'selection-move':
     case 'selection-drop':
-    case 'ignore-many': {
+    case 'ignore-many':
+    case 'include-many': {
       const next = selectionStep(state, action)
       return next === state ? state : afterEdit(next)
     }
@@ -1128,6 +1130,19 @@ function playedOf(draft: Draft, identities: readonly string[]): string[] {
 /** A clip that can carry a mark: on disk and not excluded (the rows with a Cuts control). */
 function canMark(clip: Clip | undefined): boolean {
   return onDisk(clip) && clip?.excluded !== true
+}
+
+/**
+ * A clip that can be one of several selected (`plain-clip-bin` D5): one that can carry a mark, or an
+ * ignored one, so that Include clips acts on a set of them. A missing or excluded clip is selected alone.
+ */
+function canJoin(clip: Clip | undefined): boolean {
+  return canMark(clip) || clip?.status === 'ignored'
+}
+
+/** A clip whose file is there (included, New or ignored): the clips an Include clips may bring back. */
+function hasFile(clip: Clip | undefined): boolean {
+  return clip !== undefined && clip.status !== 'missing'
 }
 
 /**
@@ -2045,6 +2060,54 @@ export function EventEditor({
     [announce],
   )
 
+  // Include clips (the group tab's and the menu's, `plain-clip-bin` D5): every ignored clip of the
+  // set goes back at the end of the chapter that lists it, in the bin's order; one draft edit and
+  // one Undo step ("include of N clips").
+  const onIncludeMany = useCallback<EditBinding['onIncludeMany']>(
+    (identities) => {
+      const current = latest.current
+      if (!idle(current)) {
+        announce(MOVE_LOCKED)
+        return false
+      }
+      const wanted = new Set(identities)
+      const order: string[] = []
+      const home = new Map<string, ChapterKey>()
+      for (const chapter of current.draft.chapters) {
+        for (const identity of ignoredOf.get(chapter.key) ?? NONE_REMOVED) {
+          if (wanted.has(identity) && !home.has(identity)) {
+            order.push(identity)
+            home.set(identity, chapter.key)
+          }
+        }
+      }
+      const action: SelectionEdit = {
+        type: 'include-many',
+        identities: order,
+        chapterOf: (identity) => home.get(identity),
+        onDisk: (identity) => hasFile(clips.get(identity)),
+      }
+      if (selectionStep(current, action) === current) {
+        announce(NOTHING_INCLUDED)
+        return false
+      }
+      const count = includedBy(current, action as Extract<SelectionEdit, { type: 'include-many' }>).length
+      dispatch(action)
+      announce(`Included ${plural(count, 'clip', 'clips')}. Not saved.`)
+      return true
+    },
+    [announce, clips, ignoredOf],
+  )
+  const onInclude = useCallback<EditBinding['onInclude']>(
+    (identity) => {
+      const home = [...ignoredOf].find(([, identities]) => identities.includes(identity))?.[0]
+      if (home !== undefined) {
+        onIncludeClip(home, identity)
+      }
+    },
+    [ignoredOf, onIncludeClip],
+  )
+
   // The Track hands over where a release at a point lands on it; a track drag asks whether a
   // point is over the bin (the workspace's bin column: the player above its lists is the bin's too).
   const trackAt = useRef<TrackBridge['current']>(null)
@@ -2220,6 +2283,21 @@ export function EventEditor({
   // through this stable hand-over.
   const rotateRef = useRef<RotateHandler>(() => undefined)
   const rotateClip = useCallback<RotateHandler>((identity, way) => rotateRef.current(identity, way), [])
+  // The clip menu's status edits and facts (`plain-clip-bin` D5) are made further down, beside the
+  // Clip tab's own; the Timeline's binding calls them through these stable hand-overs.
+  const statusRef = useRef<{
+    facts: () => MenuFacts
+    remove: EditBinding['onRemoveClip']
+    restore: EditBinding['onRestoreClip']
+    moveToEnd: EditBinding['onMoveToEnd']
+  }>({ facts: () => ({ order: [], clip: () => null }), remove: () => undefined, restore: () => undefined, moveToEnd: () => undefined })
+  const menuFacts = useCallback<EditBinding['menuFacts']>(() => statusRef.current.facts(), [])
+  const removeFromMenu = useCallback<EditBinding['onRemoveClip']>((identity) => statusRef.current.remove(identity), [])
+  const restoreFromMenu = useCallback<EditBinding['onRestoreClip']>((identity) => statusRef.current.restore(identity), [])
+  const moveClipToEnd = useCallback<EditBinding['onMoveToEnd']>(
+    (identity, to) => statusRef.current.moveToEnd(identity, to),
+    [],
+  )
   const editing = useMemo<EditBinding | null>(() => {
     if (baseCuts === undefined || draftCuts === undefined || detail === null) {
       return null
@@ -2234,6 +2312,12 @@ export function EventEditor({
       onIgnore: onIgnoreClip,
       onMoveMany,
       onIgnoreMany,
+      onInclude,
+      onIncludeMany,
+      onRemoveClip: removeFromMenu,
+      onRestoreClip: restoreFromMenu,
+      onMoveToEnd: moveClipToEnd,
+      menuFacts,
       onRotateMany,
       onMoveSelection,
       overBin,
@@ -2267,6 +2351,12 @@ export function EventEditor({
     onIgnoreClip,
     onMoveMany,
     onIgnoreMany,
+    onInclude,
+    onIncludeMany,
+    removeFromMenu,
+    restoreFromMenu,
+    moveClipToEnd,
+    menuFacts,
     onRotateMany,
     onMoveSelection,
     overBin,
@@ -2352,29 +2442,25 @@ export function EventEditor({
   // (`clip-multi-select`, the 100 ms gate).
   const binSelection = useDeferredValue(cards.selection)
   const selectedSet = useMemo(() => new Set(selectedClips(binSelection)), [binSelection])
-  // A press on a bin row (its click or its name): a Shift press ranges over the rows' page order,
-  // the clips the bin lets be selected (on disk, not excluded) of every chapter that is listed.
+  // The bin's rows (`plain-clip-bin` D1): every clip of the event, as the draft stands.
+  const binRowsNow = useMemo(
+    () =>
+      ready === null || detail === null
+        ? []
+        : binRows(ready.draft, ready.baseline, detail, ready.typed, ready.lastMoved),
+    // The draft, the read and the clips with a typed cut are all the rows read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ready?.draft, ready?.baseline, detail, ready?.typed, ready?.lastMoved],
+  )
+  // A press on a bin row (its click or its name): a Shift press ranges over the rows' order, the
+  // clips that can be selected together (`canJoin`: played clips, then ignored ones).
   const binPress = useRef<(identity: string, press: Press) => void>(() => undefined)
   binPress.current = (identity, press) => {
-    const order =
-      ready === null
-        ? []
-        : ready.draft.chapters.flatMap((chapter) =>
-            chapter.deleted
-              ? []
-              : (ready.draft.orders.get(chapter.key) ?? NONE_REMOVED).filter((candidate) => {
-                  const clip = clips.get(candidate)
-                  return (
-                    clip !== undefined &&
-                    !clip.excluded &&
-                    (clip.status === 'active' || clip.status === 'new')
-                  )
-                }),
-          )
-    // Only a clip the track draws joins a set: an ignored, a missing or an excluded clip is selected
-    // alone (its Clip tab edits that one clip), and a press with a modifier while one is selected
-    // starts a new selection rather than add to it.
-    const joins = (candidate: string) => canMark(clips.get(candidate))
+    const order = binRowsNow.map((row) => row.identity).filter((candidate) => canJoin(clips.get(candidate)))
+    // Only a clip that can join a set does: a missing or an excluded clip is selected alone (its Clip
+    // tab edits that one clip), and a press with a modifier while one is selected starts a new
+    // selection rather than add to it.
+    const joins = (candidate: string) => canJoin(clips.get(candidate))
     const alone =
       press !== 'alone' &&
       (!joins(identity) || selectedClips(cards.selection).some((held) => !joins(held)))
@@ -2389,16 +2475,6 @@ export function EventEditor({
     binPress.current(identity, 'alone')
     setWatchAsk((asked) => asked + 1)
   }, [])
-  // The bin's rows (`plain-clip-bin` D1): every clip of the event, as the draft stands.
-  const binRowsNow = useMemo(
-    () =>
-      ready === null || detail === null
-        ? []
-        : binRows(ready.draft, ready.baseline, detail, ready.typed, ready.lastMoved),
-    // The draft, the read and the clips with a typed cut are all the rows read.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ready?.draft, ready?.baseline, detail, ready?.typed, ready?.lastMoved],
-  )
   // What the bin's rows ask of the editor: a press selects as the track does, the frame watches,
   // a right-click or Shift+F10 asks the Timeline for the clip's menu, and an ignored clip's row
   // dragged onto the track includes it there.
@@ -2421,7 +2497,7 @@ export function EventEditor({
     if (detail !== null) {
       keepSelection({
         clips: new Set(clips.keys()),
-        joinable: new Set([...clips].filter(([, clip]) => canMark(clip)).map(([identity]) => identity)),
+        joinable: new Set([...clips].filter(([, clip]) => canJoin(clip)).map(([identity]) => identity)),
       })
     }
   }, [detail, clips, keepSelection])
@@ -3322,21 +3398,23 @@ export function EventEditor({
       name: chapterHeading(chapter.name, hasNamedChapter),
     }))
     const held = new Set(selectedClips(tabSelection))
-    const played =
+    // The set's clips in the bin's order: the ones a chapter plays, then the ignored ones.
+    const members =
       tabSelection.kind === 'clips'
-        ? lists
-            .flatMap((chapter) => draft.orders.get(chapter.key) ?? NONE_REMOVED)
-            .filter((identity) => held.has(identity))
+        ? binRowsNow
+            .filter((row) => held.has(row.identity) && canJoin(clips.get(row.identity)))
+            .map((row) => row.identity)
         : []
-    // A set the draft no longer plays two clips of (the effect above trims it a render later) is
+    // A set the draft no longer holds two clips of (the effect above trims it a render later) is
     // never shown as a group of one or none: the one clip left gets its own tab, none gets no tab.
-    if (tabSelection.kind === 'clips' && played.length >= 2) {
+    if (tabSelection.kind === 'clips' && members.length >= 2) {
       // Only the five names the tab shows are worked out: a range over 400 clips costs no more.
       clipTab = (
         <ClipGroupTab
-          clips={played.map((identity, at) => ({
+          clips={members.map((identity, at) => ({
             identity,
             name: at < 5 ? nameFor(identity) : identity,
+            ignored: clips.get(identity)?.status === 'ignored',
           }))}
           chapters={chapterChoices}
           editing={editing}
@@ -3348,7 +3426,7 @@ export function EventEditor({
         tabSelection.kind === 'cut'
           ? tabSelection.identity
           : tabSelection.kind === 'clips'
-            ? (played[0] ?? null)
+            ? (members[0] ?? null)
             : lastClip(tabSelection)
       const clip = identity === null ? undefined : clips.get(identity)
       if (identity !== null && clip !== undefined) {
@@ -3400,6 +3478,41 @@ export function EventEditor({
         )
       }
     }
+  }
+
+  // The clip menu's facts and status edits (`plain-clip-bin` D5), for the Timeline's menu: the draft
+  // as this render has it (assigned in render, as the Timeline renders after this does).
+  statusRef.current = {
+    facts: () => {
+      if (ready === null || detail === null) {
+        return { order: [], clip: () => null }
+      }
+      const { draft } = ready
+      const lists = listedChapters(draft.chapters)
+      const choices = lists.map((chapter) => ({
+        key: chapter.key,
+        name: chapterHeading(chapter.name, hasNamedChapter),
+      }))
+      return {
+        order: binRowsNow.map((row) => row.identity).filter((identity) => canJoin(clips.get(identity))),
+        clip: (identity) => {
+          const clip = clips.get(identity)
+          if (clip === undefined) {
+            return null
+          }
+          const own = lists.find((chapter) => (draft.orders.get(chapter.key) ?? NONE_REMOVED).includes(identity))
+          return {
+            name: nameNow(draft, ready.baseline.original, identity, ignoredOf, removedByChapter),
+            state: clipState({ status: clip.status, played: own !== undefined, removed: draft.removed.has(identity) }),
+            own: own?.key ?? null,
+            chapters: choices,
+          }
+        },
+      }
+    },
+    remove: onRemoveClipFromTab,
+    restore: onRestoreClipFromTab,
+    moveToEnd: onMoveClipToEnd,
   }
 
   // The editor's parts, placed by the layout: stacked in the page, or in the workspace's panes.

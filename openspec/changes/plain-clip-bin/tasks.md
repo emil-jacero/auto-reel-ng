@@ -34,7 +34,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   row menu, and the ignored row's drag. It replaces `ChapterDrag` and `ClipOrderList` in the workspace's bin slot.
   Verify with `npm test` and `npm run check`, then in Playwright with the scenarios of "The clip bin lists every clip
   of the event as one plain list" and "The bin's list selects clips as the track does and opens their menu".
-- [ ] 2.2 The menu's status items, the group view's Include clips and `include-many` (design D5), with their unit tests
+- [x] 2.2 The menu's status items, the group view's Include clips and `include-many` (design D5), with their unit tests
   in `clipMenu.test.ts` and a reducer test (one Undo step). Verify in Playwright with the scenarios of "Edit mode offers
   a clip's edits in a menu", "The Clip tab acts on several selected clips" and "Edit mode removes a missing clip from
   reel.yaml on request".

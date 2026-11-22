@@ -3,11 +3,19 @@
 // calls `selectionStep` and `selectionLabel`, and the tests drive them without React.
 
 import type { Baseline, ChapterKey, Draft } from './draft.ts'
-import { groupOf, ignoreClip, listedChapters, moveGroup, moveMarkedToEnd } from './draft.ts'
+import {
+  groupOf,
+  ignoreClip,
+  includeClip,
+  isIgnoredNow,
+  listedChapters,
+  moveGroup,
+  moveMarkedToEnd,
+} from './draft.ts'
 import { afterMove } from './marks.ts'
 
 /**
- * The three actions that carry the clips they act on, and `onDisk`: whether a clip is on disk
+ * The four actions that carry the clips they act on, and `onDisk`: whether a clip is on disk
  * (active or NEW). A missing clip stays in its chapter's order, so the order alone cannot tell the
  * reducer to leave it out; the dispatcher knows the clips and ships the rule, as `rotate` does.
  */
@@ -18,7 +26,13 @@ export type SelectionEdit = { onDisk: (identity: string) => boolean } & (
   | { type: 'selection-drop'; identities: readonly string[]; dragged: string; to: ChapterKey; gap: number }
   // Ignore every clip of the set, out of the chapter that plays it.
   | { type: 'ignore-many'; identities: readonly string[] }
+  // Include every ignored clip of the set (`plain-clip-bin` D5), each at the end of the chapter
+  // that lists it as ignored (`chapterOf`), in the order of `identities` (the bin's).
+  | { type: 'include-many'; identities: readonly string[]; chapterOf: (identity: string) => ChapterKey | undefined }
 )
+
+/** What an Include clips that includes nothing says (no clip ignored, or its chapter deleted). */
+export const NOTHING_INCLUDED = 'Nothing included.'
 
 /** What a selection edit reads and writes of the editor's state. */
 export type SelectionTarget = {
@@ -37,6 +51,30 @@ function listedKeys(draft: Draft): ChapterKey[] {
 /** The set's clips that are on disk, as a set. */
 const wanted = (action: SelectionEdit): ReadonlySet<string> =>
   new Set(action.identities.filter(action.onDisk))
+
+/**
+ * The clips of an `include-many` that it includes, in the action's order, each with the chapter
+ * it goes back into: on disk, ignored now, and listed by a chapter the draft keeps.
+ */
+export function includedBy(
+  target: Pick<SelectionTarget, 'baseline' | 'draft'>,
+  action: Extract<SelectionEdit, { type: 'include-many' }>,
+): { identity: string; chapter: ChapterKey }[] {
+  const kept = new Set(listedKeys(target.draft))
+  const found: { identity: string; chapter: ChapterKey }[] = []
+  for (const identity of new Set(action.identities)) {
+    const chapter = action.chapterOf(identity)
+    if (
+      action.onDisk(identity) &&
+      chapter !== undefined &&
+      kept.has(chapter) &&
+      isIgnoredNow(target.baseline, target.draft, identity)
+    ) {
+      found.push({ identity, chapter })
+    }
+  }
+  return found
+}
 
 /**
  * `target` after the edit, or `target` itself when nothing changes. A clip that is not on disk
@@ -76,11 +114,30 @@ export function selectionStep<T extends SelectionTarget>(target: T, action: Sele
       }
       return next === draft ? target : { ...target, draft: next }
     }
+    case 'include-many': {
+      let next = draft
+      for (const { identity, chapter } of includedBy(target, action)) {
+        next = includeClip(target.baseline, next, chapter, identity, next.orders.get(chapter)?.length ?? 0)
+      }
+      return next === draft ? target : { ...target, draft: next }
+    }
   }
 }
 
-/** The step's name for Undo and Redo: "move of 3 clips", "ignore of a1.mp4". `before` is the state acted on. */
-export function selectionLabel(action: SelectionEdit, before: Pick<SelectionTarget, 'draft'>): string {
+/**
+ * The step's name for Undo and Redo: "move of 3 clips", "ignore of a1.mp4", "include of 2 clips".
+ * `before` is the state acted on.
+ */
+export function selectionLabel(
+  action: SelectionEdit,
+  before: Pick<SelectionTarget, 'baseline' | 'draft'>,
+): string {
+  if (action.type === 'include-many') {
+    const found = includedBy(before, action)
+    return found.length === 1
+      ? `include of ${clipName(found[0]?.identity ?? '')}`
+      : `include of ${found.length} clips`
+  }
   const keys = listedKeys(before.draft)
   const group = groupOf(before.draft.orders, keys, wanted(action))
   const what = action.type === 'ignore-many' ? 'ignore' : 'move'

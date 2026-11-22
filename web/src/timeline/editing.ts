@@ -1,4 +1,5 @@
 import type { ClipCuts, ClipTurns } from '../cuts/ReadCuts'
+import type { ClipState } from '../edit/clipInspector'
 import type { ChapterKey, CutKey, Cuts, DraftCut } from '../edit/draft'
 import type { ClipPreviews } from '../preview/previews'
 import type { PosterPick } from '../edit/poster.ts'
@@ -37,11 +38,30 @@ export type TrackBridge = {
 
 /**
  * The Timeline hands this over while it is mounted; the bin's rows ask it to open a clip's menu
- * (`plain-clip-bin` D2). It returns whether a menu opened: false for a clip the track does not
- * draw, which has no menu here yet.
+ * (`plain-clip-bin` D2). It returns whether a menu opened: false for a clip the event does not list.
  */
 export type MenuBridge = {
   current: ((open: ClipMenuOpen) => boolean) | null
+}
+
+/** What a clip's menu needs to know of a clip, from the draft as it stands (`plain-clip-bin` D5). */
+export type MenuClip = {
+  /** The clip's name as the bin names it. */
+  name: string
+  /** Where the draft has it: played, ignored, missing or removed; null when no chapter holds it. */
+  state: ClipState | null
+  /** The chapter that plays it, left out of Move to; null when none does. */
+  own: ChapterKey | null
+  /** Every chapter the draft lists, in order, for Move to. */
+  chapters: readonly { key: ChapterKey; name: string }[]
+}
+
+/** The clips a menu may act on, and what the draft holds of each. */
+export type MenuFacts = {
+  /** The bin's order of the clips that can be selected together (played, then ignored): what targets are taken in. */
+  order: readonly string[]
+  /** The clip as the menu needs it; null for a clip the event does not list. */
+  clip(identity: string): MenuClip | null
 }
 
 export type EditBinding = {
@@ -96,6 +116,24 @@ export type EditBinding = {
    * them all. Ignored while locked. Returns whether it ignored anything (it says so when not).
    */
   onIgnoreMany(identities: readonly string[]): boolean
+  /**
+   * An ignored clip included (the Clip tab's Include clip): back at the end of the chapter that
+   * lists it, one draft edit. Ignored while locked, and for a clip that is not ignored.
+   */
+  onInclude(identity: string): void
+  /**
+   * Several ignored clips included, each at the end of its chapter in the bin's order: one draft
+   * edit and one Undo step ("include of 2 clips"). Ignored while locked. Returns whether it
+   * included anything (it says so when not).
+   */
+  onIncludeMany(identities: readonly string[]): boolean
+  /** A missing clip removed from reel.yaml when the edits are saved, and its Undo: one draft edit each. */
+  onRemoveClip(identity: string): void
+  onRestoreClip(identity: string): void
+  /** Move to… for one clip off the track: the clip at the end of the chapter, one draft edit. */
+  onMoveToEnd(identity: string, to: ChapterKey): void
+  /** What the clip menu needs of the draft now (read when it opens and while it is open). */
+  menuFacts(): MenuFacts
   /**
    * Rotate every one of `identities` that is on disk and in a chapter a quarter `way`, each from
    * its own turn: one draft edit ("3 clips rotated right."), as Rotate marked makes it. Ignored
