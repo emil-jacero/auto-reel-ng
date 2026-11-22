@@ -186,7 +186,7 @@ const BinRowView = memo(function BinRowView({
         <ClipThumb eventId={eventId} clip={clip} name={row.name} turn={turn} />
       </span>
       <span className="bin-text" aria-hidden="true">
-        <span className="bin-name" data-selected={selected || undefined}>
+        <span className="bin-name" data-selected={selected || undefined} title={row.name}>
           <ClipName name={row.name} />
         </span>
         {place !== null && <span className="bin-place">{place}</span>}

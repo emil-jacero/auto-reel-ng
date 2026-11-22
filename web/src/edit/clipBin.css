@@ -214,8 +214,8 @@
     }
   }
 
+  /* Underlined, not bold: a bolder name is wider and would clip where its neighbours fit. */
   .bin-name[data-selected] {
-    font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 3px;
   }
