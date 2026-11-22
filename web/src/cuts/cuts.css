@@ -1,32 +1,46 @@
 /*
- * A clip's cuts: Edit mode's Cuts control and panel (`CutsPanel.tsx`), and the
- * event page's indicator and list (`ReadCuts.tsx`). Where the control and the
- * panel sit in a row's grid is Edit mode's layout, in `edit/edit.css`.
+ * A clip's cuts: Edit mode's Cuts panel (`CutsPanel.tsx`), and the event page's
+ * indicator and list (`ReadCuts.tsx`).
  *
- * Every word is `--fg-muted` or stronger (4.5:1); only the quiet control's icons
- * use `--fg-subtle` (3:1, enough for an icon). Nothing here moves: the chevron
- * turns at once.
+ * Every word is `--fg-muted` or stronger (4.5:1); only the icons use `--fg-subtle`
+ * (3:1, enough for an icon). Nothing here moves: the chevron turns at once.
  */
 @layer screens {
-  /* ------------------------------------------------------------ the Cuts control */
+  /* ------------------------------------------------------------ the panel */
 
-  .cuts-toggle {
-    --_fg: var(--fg-muted);
+  /* The Clip tab's Cuts panel (`CutsPanel.tsx`): headed by the cut summary, then the list, the
+     track's "+ Cut at playhead" and the two typed times. */
+  .clip-cuts {
+    display: grid;
+    gap: var(--s-3);
+    min-inline-size: 0;
+    padding: var(--s-3);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+  }
 
+  /* The summary: the count and the time cut out; with cuts the info colour, never the colour
+     alone (the words say it). */
+  .cuts-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
-  }
 
-  .cuts-toggle:not([data-cut], [aria-expanded='true']) > :is(svg, .cuts-chevron) {
-    color: var(--fg-subtle);
-  }
+    & > svg {
+      flex: none;
+      inline-size: 0.875rem;
+      block-size: 0.875rem;
+      color: var(--fg-subtle);
+    }
 
-  .clip-item:hover .cuts-toggle > :is(svg, .cuts-chevron) {
-    color: inherit;
-  }
-
-  /* Has cuts: the count and the words say so too, never the colour alone. */
-  .cuts-toggle[data-cut] {
-    --_fg: var(--info-fg);
+    &[data-cut] {
+      color: var(--info-fg);
+    }
   }
 
   .cuts-chevron {
@@ -38,21 +52,15 @@
     }
   }
 
-  :is(.cuts-toggle[aria-expanded='true'], .read-cuts[open] > summary) .cuts-chevron {
+  .read-cuts[open] > summary .cuts-chevron {
     rotate: 180deg;
   }
 
-  /* The count is for a narrow row, the words for a wide one (`edit.css` places them). */
-  .cuts-toggle-count {
-    display: none;
-  }
-
   /*
-   * A time typed in the panel and not added: "typed" in words beside a dot, at
-   * every width, so a hidden panel holding Save back is found on its row (and the
-   * control's name says so). The words carry it, not the tone.
+   * A time typed in the panel and not added: "typed" in words beside a dot, so the panel that
+   * holds Save back says so (and the bin's row too). The words carry it, not the tone.
    */
-  .cuts-toggle-typed {
+  .cuts-typed {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -69,45 +77,11 @@
     }
   }
 
-  @container (width < 58rem) {
-    .cuts-toggle-words,
-    .cuts-toggle .cuts-chevron {
-      display: none;
-    }
-
-    .cuts-toggle-count {
-      display: inline;
-    }
-
-    /*
-     * The narrow control has the 64px under the handle and the position: "typed"
-     * with its dot takes the place of the scissors and the count (77px with all
-     * three); its name still says it is the clip's Cuts control.
-     */
-    .cuts-toggle[data-typed] > :is(svg, .cuts-toggle-count) {
-      display: none;
-    }
-  }
-
-  /* ------------------------------------------------------------ the panel */
-
-  /* A line of its own after the row's explicit lines, the row's width when narrow. */
-  .clip-cuts {
+  /* "+ Cut at playhead" and its refusal, by its own width. */
+  .cut-now {
     display: grid;
-    grid-row: -1 / span 1;
-    grid-column: 1 / -1;
-    gap: var(--s-3);
-    margin-block-start: var(--s-2);
-    padding: var(--s-3);
-    border-radius: var(--r-md);
-    background: var(--surface-2);
-  }
-
-  @container (width >= 58rem) {
-    .clip-cuts {
-      grid-column: file-start / -1;
-      margin-inline-end: var(--s-4);
-    }
+    justify-items: start;
+    gap: var(--s-2);
   }
 
   .cut-list {
@@ -168,6 +142,15 @@
   /* The badges (removed, past the clip's end) and the action stay together at the end. */
   .cut-body > .badge + :is(.badge, .btn) {
     margin-inline-start: 0;
+  }
+
+  /* Edit and Remove wrap together, at the end of the row. */
+  .cut-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1);
+    margin-inline-start: auto;
   }
 
   .cut-body > .cut-refusal {
@@ -264,6 +247,16 @@
   @media (pointer: coarse) {
     .cut {
       min-block-size: 2.75rem;
+    }
+
+    /* The panel's lines keep 1rem apart, so no button's touch area covers the next one's
+       (the list's last Remove and "+ Cut at playhead", the wrapped Edit and Remove). */
+    .clip-cuts {
+      row-gap: var(--s-4);
+    }
+
+    .cut-body {
+      row-gap: var(--s-4);
     }
 
     .field-input.cut-time {

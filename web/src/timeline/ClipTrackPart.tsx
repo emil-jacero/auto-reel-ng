@@ -1,24 +1,14 @@
-import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 
-import { CutList } from '../cuts/CutsPanel'
-import {
-  UNAVAILABLE,
-  formatTime,
-  removedAddedWords,
-  removedReadWords,
-  spanWords,
-} from '../cuts/times'
-import type { DraftCut } from '../edit/draft'
+import { UNAVAILABLE, formatTime } from '../cuts/times'
 import { Icon } from '../ui/Icon'
-import { addCutAtPlayhead } from './cutAtPlayhead'
 import { held as dragHeld } from './dragStore'
 import type { DragStore } from './dragStore'
 import { typedEdge, typedEdgeShown, trimLabel } from './edgeTyped'
 import type { Side } from './edgeTrim'
 import type { EditBinding } from './editing'
 import type { TrackClip } from './layout'
-import type { Playhead } from './playhead'
 
 /*
  * The part of the inspector's Clip tab that needs the track (`clip-tab-and-player`, design D5):
@@ -34,27 +24,16 @@ const SIDES: Side[] = ['start', 'end']
 
 export function ClipTrackPart({
   clip,
-  clips,
   length,
   editing,
   drag,
-  playhead,
-  selectedKey,
-  onSelectCut,
-  onSelectClip,
   poster,
 }: {
   clip: TrackClip
-  clips: readonly TrackClip[]
   /** "12 s in the movie". */
   length: string | null
   editing: EditBinding
   drag: DragStore
-  playhead: Playhead
-  /** The selected cut's key when it is this clip's. */
-  selectedKey: string | null
-  onSelectCut: (identity: string, key: string) => void
-  onSelectClip: (identity: string) => void
   /** The Timeline's Use as poster control. */
   poster: ReactNode
 }) {
@@ -64,15 +43,6 @@ export function ClipTrackPart({
       <div className="ct-row">
         <TrimFields key={`${editing.epoch}:${clip.identity}`} clip={clip} editing={editing} drag={drag} />
       </div>
-      <ClipCuts
-        clip={clip}
-        clips={clips}
-        editing={editing}
-        playhead={playhead}
-        selectedKey={selectedKey}
-        onSelectCut={onSelectCut}
-        onSelectClip={onSelectClip}
-      />
       {poster}
     </div>
   )
@@ -186,127 +156,5 @@ function TrimFields({
       )}
       {locked && <p className="tl-fields-locked">{UNAVAILABLE}</p>}
     </div>
-  )
-}
-
-function ClipCuts({
-  clip,
-  clips,
-  editing,
-  playhead,
-  selectedKey,
-  onSelectCut,
-  onSelectClip,
-}: {
-  clip: TrackClip
-  clips: readonly TrackClip[]
-  editing: EditBinding
-  playhead: Playhead
-  selectedKey: string | null
-  onSelectCut: (identity: string, key: string) => void
-  onSelectClip: (identity: string) => void
-}) {
-  const listed = editing.listed(clip.identity)
-  const [refusal, setRefusal] = useState<string | null>(null)
-  const errorId = useId()
-  const locked = editing.locked
-
-  const add = () => {
-    if (locked) {
-      return
-    }
-    setRefusal(addCutAtPlayhead({ clip, clips, editing, playhead }))
-  }
-  // The pressed Remove leaves with its cut (a read cut shows "Removed when you save", an added
-  // one is dropped): focus goes to the next cut's control, else + Cut at playhead, before a paint.
-  const section = useRef<HTMLElement>(null)
-  const pressed = useRef<{ button: HTMLElement; row: number } | null>(null)
-  useLayoutEffect(() => {
-    const was = pressed.current
-    if (was === null || was.button.isConnected) {
-      return
-    }
-    pressed.current = null
-    const rows = Array.from(section.current?.querySelectorAll<HTMLElement>('li') ?? [])
-    const next = rows
-      .slice(was.row)
-      .map((row) => row.querySelector<HTMLElement>('button'))
-      .find((button) => button !== null)
-    const target = next ?? section.current?.querySelector<HTMLElement>('button.ct-add')
-    target?.focus({ preventScroll: true })
-  })
-  const remove = (cut: DraftCut, number: number, button: HTMLElement) => {
-    if (locked) {
-      return
-    }
-    pressed.current = { button, row: number - 1 }
-    editing.onRemove(clip.identity, cut.key)
-    // The removed cut was the selection: the clip it belongs to is, so the tab stays.
-    if (selectedKey === cut.key) {
-      onSelectClip(clip.identity)
-    }
-    editing.announce(
-      cut.key.startsWith('r')
-        ? removedReadWords(number, cut, clip.name)
-        : removedAddedWords(
-            cut,
-            clip.name,
-            listed.filter((c) => c.key !== cut.key),
-          ),
-    )
-  }
-  return (
-    <section ref={section} className="ct-cuts" aria-label={`Cuts of ${clip.name}`}>
-      {listed.length === 0 ? (
-        <p className="cuts-none">No cuts: the whole clip plays.</p>
-      ) : (
-        <CutList
-          cuts={listed}
-          label={`Cuts of ${clip.name}`}
-          keyOf={(cut) => cut.key}
-          controls={(cut, number) =>
-            cut.removed === true ? (
-              <span className="cut-length">Removed when you save</span>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-compact"
-                  aria-label={`Edit cut ${number} of ${clip.name}, ${spanWords(cut)}`}
-                  aria-pressed={selectedKey === cut.key}
-                  onClick={() => onSelectCut(clip.identity, cut.key)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-compact cut-remove"
-                  aria-label={`Remove cut ${number} of ${clip.name}, ${spanWords(cut)}`}
-                  aria-disabled={locked || undefined}
-                  onClick={(event) => remove(cut, number, event.currentTarget)}
-                >
-                  Remove
-                </button>
-              </>
-            )
-          }
-        />
-      )}
-      <button
-        type="button"
-        className="btn btn-secondary ct-add"
-        aria-disabled={locked || undefined}
-        aria-describedby={refusal === null ? undefined : errorId}
-        onClick={add}
-      >
-        + Cut at playhead
-      </button>
-      {refusal !== null && (
-        <p className="field-error" id={errorId}>
-          <Icon name="alert-triangle" />
-          {refusal}
-        </p>
-      )}
-    </section>
   )
 }

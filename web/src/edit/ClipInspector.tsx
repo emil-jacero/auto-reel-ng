@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import type { ReactNode } from 'react'
 
 import { RotateButtons } from '../rotate/RotateButtons'
 import { MOVE_LOCKED } from '../timeline/clipDrag'
@@ -16,7 +17,8 @@ import type { ChapterKey } from './draft'
  * does not draw (ignored, missing). Name, chapter and place, status in words; Move earlier and
  * Move later, Move to… and Rotate for a clip a chapter plays; and one button at its end by status:
  * Ignore clip, Include clip, Remove from reel.yaml or Undo. Each makes the draft edit the bin row's
- * own control makes. The Timeline adds what needs the track (trims, cuts, poster) into `slot`.
+ * own control makes. The Cuts panel (`cuts/CutsPanel.tsx`) is the editor's, in `cuts`, with or without
+ * the track; the Timeline adds what needs the track (trims, poster) into `slot`.
  *
  * The button at the end is one element for every status, so keyboard focus stays on it when the
  * press changes the status: after Include it is Ignore clip, after Remove it is Undo.
@@ -44,6 +46,7 @@ export function ClipInspector({
   onStep,
   onMoveTo,
   onEnd,
+  cuts,
   slot,
 }: {
   identity: string
@@ -64,6 +67,8 @@ export function ClipInspector({
   onMoveTo: (to: ChapterKey) => void
   /** The end button: its action by `offersOf(state).action`. */
   onEnd: () => void
+  /** The clip's Cuts panel: for a clip on disk that a chapter plays and `reel.yaml` does not exclude; null otherwise. */
+  cuts: ReactNode
   /** Where the Timeline puts what needs the track, when it draws the clip. */
   slot: (node: HTMLElement | null) => void
 }) {
@@ -135,6 +140,7 @@ export function ClipInspector({
           onMove={onMoveTo}
         />
       )}
+      {cuts}
       {offers.edits && <div ref={slot} className="ct-track-slot" />}
       {end !== null && (
         <button

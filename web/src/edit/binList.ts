@@ -94,7 +94,7 @@ export function rowWords(row: BinRow): string {
     parts.push(`kept ${length}`)
   }
   if (row.typed) {
-    parts.push('a typed cut waits')
+    parts.push('a cut typed, not added')
   }
   return parts.filter((part) => part !== null).join(', ')
 }

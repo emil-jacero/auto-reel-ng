@@ -10,17 +10,17 @@ import { formatTime, parseTime } from './times.ts'
  */
 
 describe('setTyped', () => {
-  it('gives a clip with no panel a hidden entry holding that one field', () => {
+  it('gives a clip with no entry one holding that one field', () => {
     const { panels } = createCutPanels()
     panels.setTyped('a.mp4', 'start', '0:01.234')
-    assert.deepEqual(panels.get('a.mp4'), { open: false, start: '0:01.234', end: '' })
+    assert.deepEqual(panels.get('a.mp4'), { start: '0:01.234', end: '' })
   })
 
-  it('keeps a shown panel shown and the other field as typed', () => {
+  it('keeps the other field as typed', () => {
     const { panels } = createCutPanels()
-    panels.set('a.mp4', { open: true, start: '0:01', end: '0:02' })
+    panels.set('a.mp4', { start: '0:01', end: '0:02' })
     panels.setTyped('a.mp4', 'end', '0:03.5')
-    assert.deepEqual(panels.get('a.mp4'), { open: true, start: '0:01', end: '0:03.5' })
+    assert.deepEqual(panels.get('a.mp4'), { start: '0:01', end: '0:03.5' })
   })
 
   it('writes a time the panel reads back as the same millisecond', () => {
@@ -41,7 +41,7 @@ describe('subscribe', () => {
     const stop = panels.subscribe('a.mp4', () => (a += 1))
     panels.subscribe('b.mp4', () => (b += 1))
     panels.setTyped('a.mp4', 'start', '0:01')
-    panels.set('a.mp4', { open: true, start: '0:01', end: '' })
+    panels.set('a.mp4', { start: '0:01', end: '' })
     assert.deepEqual([a, b], [2, 0])
     stop()
     panels.setTyped('a.mp4', 'end', '0:02')

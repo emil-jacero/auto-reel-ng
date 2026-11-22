@@ -2,10 +2,10 @@ import { createClipPreviews } from '../preview/previews.ts'
 import type { CutPanels, PanelState } from './CutsPanel'
 
 /*
- * The editor's cut-panel store (`CutPanels`): each clip's panel, shown or not, and its two fields
- * as typed, by identity. A write tells that clip's subscribers (its panel, the bin's player), and
- * a clear tells every clip that had one, so a mounted panel empties its fields. Reset empties it
- * and closes every clip preview (one open at a time, `preview/previews.ts`).
+ * The editor's cut-panel store (`CutPanels`): each clip's two fields as typed, by identity. A
+ * write tells that clip's subscribers (its panel, the bin's player), and a clear tells every clip
+ * that had one, so a mounted panel empties its fields. Reset empties it and closes every clip
+ * preview (one open at a time, `preview/previews.ts`).
  */
 export function createCutPanels(): { panels: CutPanels; clear: () => void } {
   const held = new Map<string, PanelState>()
@@ -25,7 +25,6 @@ export function createCutPanels(): { panels: CutPanels; clear: () => void } {
     setTyped: (identity, field, text) => {
       const was = held.get(identity)
       held.set(identity, {
-        open: was?.open ?? false,
         start: field === 'start' ? text : (was?.start ?? ''),
         end: field === 'end' ? text : (was?.end ?? ''),
       })
