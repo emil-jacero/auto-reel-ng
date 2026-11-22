@@ -35,6 +35,15 @@ export type TrackBridge = {
   current: ((x: number, y: number, identity: string) => TrackPoint | null) | null
 }
 
+/**
+ * The Timeline hands this over while it is mounted; the bin's rows ask it to open a clip's menu
+ * (`plain-clip-bin` D2). It returns whether a menu opened: false for a clip the track does not
+ * draw, which has no menu here yet.
+ */
+export type MenuBridge = {
+  current: ((open: ClipMenuOpen) => boolean) | null
+}
+
 export type EditBinding = {
   /** The draft's cuts, the removed ones left out: what the track draws and Play skips. */
   cuts: ClipCuts
@@ -103,6 +112,8 @@ export type EditBinding = {
   overBin(x: number, y: number): boolean
   /** Where the bin's drag lands on the track (the Track keeps it current while mounted). */
   trackAt: TrackBridge
+  /** Where the bin's rows ask for a clip's menu (the Timeline keeps it current while mounted). */
+  menuAt: MenuBridge
   /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
   locked: boolean
   /**
@@ -138,7 +149,7 @@ export type EditBinding = {
 /**
  * A request for a clip's menu (`clip-context-menu`, D1): which clip, where the menu goes (the
  * pointer, or the block's visible part) and the element focus goes back to. The Timeline owns the
- * one menu; the track opens it, and the bin's rows will.
+ * one menu; the track opens it, and the bin's rows through `MenuBridge`.
  */
 export type ClipMenuOpen = {
   identity: string

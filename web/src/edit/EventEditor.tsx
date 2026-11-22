@@ -52,7 +52,7 @@ import { draftSpec } from './card/specs.ts'
 import { draftEventStyle, previewStyle, readStyle, styleRefusalOf } from './cardStyle.ts'
 import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
-import type { EditBinding, TrackBridge } from '../timeline/editing'
+import type { EditBinding, MenuBridge, TrackBridge } from '../timeline/editing'
 import { applyDrop, includeIndex } from '../timeline/reorder'
 import { MOVE_LOCKED } from '../timeline/clipDrag'
 import { focusAfterMany } from '../timeline/clipMenu'
@@ -64,7 +64,6 @@ import { Dialog } from '../ui/Dialog'
 import { Icon } from '../ui/Icon'
 import { HelpPanel, HelpToggle, useSectionHelp } from '../ui/help/HelpToggle'
 import { clipsHelpLines, newClipsLine } from './clipsHelp.ts'
-import { ignoredGroups, useWideBin } from './wideBin.ts'
 import { Pill } from '../ui/Pill'
 import { SkeletonRows } from '../ui/Skeleton'
 import { keepToastsClearOf, toast } from '../ui/toast'
@@ -84,8 +83,7 @@ import {
   nameDialogNote,
 } from './chapterNames'
 import { BinPlayer } from './BinPlayer'
-import { setBinPlayerShown, useBinPlayerShown } from './binPlayerPref.ts'
-import { ChapterDrag } from './ChapterDrag'
+import { setBinPlayerShown } from './binPlayerPref.ts'
 import { ChapterList } from './ChapterList'
 import type { ChapterRowModel } from './ChapterList'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
@@ -100,18 +98,13 @@ import {
   stepAcrossWords,
   stepWords as clipStepWords,
 } from './clipInspector.ts'
-import { ClipOrderList, IgnoredBin } from './ClipOrderList'
+import { ClipBin } from './ClipBin'
+import type { BinHandlers } from './ClipBin'
+import { binRows } from './binList.ts'
 import { stepMove } from './stepMove.ts'
 import { selectionLabel, selectionStep } from './selectionEdit.ts'
 import type { SelectionEdit } from './selectionEdit.ts'
-import type {
-  MarkHandler,
-  IncludeHandler,
-  MoveHandler,
-  Origins,
-  RemoveHandler,
-  RestoreHandler,
-} from './ClipOrderList'
+import type { IncludeHandler } from './ClipOrderList'
 import {
   addChapter,
   addCut,
@@ -144,7 +137,6 @@ import {
   ignoredLists,
   includeClip,
   ordersOf,
-  originOf,
   readCardOf,
   readCuts,
   removeClip,
@@ -183,19 +175,12 @@ import type {
   MetadataField,
 } from './draft'
 import {
-  CLEARED_WORDS,
-  MOVE_REASON_WORDS,
-  MOVING_WORDS,
   NOTHING_IGNORED,
   NOTHING_MOVED,
   NO_MARKS,
   afterMove,
   clearMarks,
-  countWords,
-  markWords,
-  moveReason,
   movedWords,
-  pruneMarks,
   toggleMark,
 } from './marks'
 import { FIELD_LABEL, inheritHint, MetadataForm } from './MetadataForm'
@@ -1114,7 +1099,6 @@ const NOTHING = () => undefined
 
 // A chapter with no removed clip: one constant, so its list keeps its memoised props.
 const NONE_REMOVED: readonly string[] = []
-const NO_CLIPS: ReadonlySet<string> = new Set()
 
 /** The chapter's heading, as the read view names it. */
 function chapterHeading(name: string, hasNamedChapter: boolean): string {
@@ -1243,7 +1227,6 @@ function sameTools(a: ChapterToolsModel, b: ChapterToolsModel): boolean {
 }
 
 const NO_CHANGES: ChapterChanges = { added: 0, renamed: 0, deleted: 0, reordered: false }
-const NO_ORIGINS: Origins = new Map()
 
 /** Above this share of the window's height the save bar rests in the page instead of being held. */
 const HELD_BAR_MAX_SHARE = 0.4
@@ -1370,9 +1353,6 @@ export function EventEditor({
   workspace?: WorkspaceFrame
 }) {
   const inWorkspace = workspace !== undefined
-  // From 960 px the bin lists the ignored clips after the chapters (compact-bin-tools D6).
-  const wideBin = useWideBin()
-  const ignoredApart = inWorkspace && wideBin
   // Read once: the draft is never re-initialised from a newer detail.
   const [detail] = useState(event)
   const [state, dispatch] = useReducer(reduce, { status: 'loading' })
@@ -1510,16 +1490,11 @@ export function EventEditor({
 
   const ready = state.status === 'ready' ? state : null
   const locked = ready !== null && ready.pressed !== null
-  // A Move marked to… applied in a transition (`onMoveMarked`): until it lands, the page shows
-  // the order from before it, so no control that acts on what is shown may act yet.
-  // Which move is pending: Move marked to… (the bin's) or Move to… of the selected clips (the Clip
-  // tab's and the menu's). Either locks the lists; only the one pressed shows busy, and the words
-  // of an unavailable control name a save or a move, never the other set.
-  const [markedPending, setMarkedPending] = useState(false)
+  // Move to… of the selected clips (the Clip tab's and the menu's) is applied in a transition: until
+  // it lands, the page shows the order from before it, so no control that acts on what is shown
+  // may act yet. It locks the lists; the words of an unavailable control name a save or a move.
   const [selectionPending, setSelectionPending] = useState(false)
-  const movePending = markedPending || selectionPending
-  // The chapter chosen in the Move marked to… picker; '' for none.
-  const [moveTo, setMoveTo] = useState<ChapterKey | ''>('')
+  const movePending = selectionPending
   const listsLocked = locked || movePending
   const changed = ready === null ? [] : changedFields(ready.baseline.read, ready.draft.metadata)
   const chapterEdits =
@@ -1749,26 +1724,6 @@ export function EventEditor({
     retried.current = null
   }, [state, announce])
 
-  const onMove = useCallback<MoveHandler>(
-    (chapter, from, to) => dispatch({ type: 'move', chapter, from, to }),
-    [],
-  )
-
-  // Only a clip the page read as missing: a clip on disk is never removed from reel.yaml here.
-  const onRemove = useCallback<RemoveHandler>(
-    (chapter, identity) => {
-      if (clips.get(identity)?.status === 'missing') {
-        dispatch({ type: 'remove', chapter, identity })
-      }
-    },
-    [clips],
-  )
-
-  const onRestore = useCallback<RestoreHandler>(
-    (identity) => dispatch({ type: 'restore', identity }),
-    [],
-  )
-
   // Each clip's cut panel, shown or not and its fields as typed, by identity: here, not
   // in its row, which Move marked to… mounts anew in another chapter. Reset empties it, and
   // closes every clip preview (one open at a time, `preview/previews.ts`).
@@ -1791,27 +1746,12 @@ export function EventEditor({
   // chapter a save keeps has a name, else `Clips`.
   const draftList = ready?.draft.chapters
   const orders = ready?.draft.orders
-  const originals = ready?.baseline.original
   const listed = useMemo(() => listedChapters(draftList ?? []), [draftList])
   const hasNamedChapter = listed.some((chapter) => chapter.name !== '')
   const notes = useMemo(
     () => laterClipNotes({ chapters: draftList ?? [], folders, ignored: ignoredOf }),
     [draftList, folders, ignoredOf],
   )
-  const origins = useMemo<Origins>(() => {
-    if (originals === undefined || draftList === undefined) {
-      return NO_ORIGINS
-    }
-    const headings = new Map(
-      draftList.map((chapter) => [chapter.key, chapterHeading(chapter.name, hasNamedChapter)]),
-    )
-    return new Map(
-      [...originOf(originals)].map(([identity, key]) => [
-        identity,
-        { key, heading: headings.get(key) ?? '' },
-      ]),
-    )
-  }, [originals, draftList, hasNamedChapter])
 
   // The state the chapter handlers below act on: they stay the same functions, so
   // a chapter's tools keep their memoised props and typing in a field re-renders no list.
@@ -2108,11 +2048,11 @@ export function EventEditor({
   // The Track hands over where a release at a point lands on it; a track drag asks whether a
   // point is over the bin (the workspace's bin column: the player above its lists is the bin's too).
   const trackAt = useRef<TrackBridge['current']>(null)
+  const menuAt = useRef<MenuBridge['current']>(null)
   const overBin = useCallback((x: number, y: number) => {
     const box = document.querySelector('.ws-binbox')?.getBoundingClientRect()
     return box !== undefined && x >= box.left && x < box.right && y >= box.top && y < box.bottom
   }, [])
-  const overTrack = useCallback((x: number, y: number) => trackAt.current?.(x, y, '') != null, [])
   // A clip of the bin released at a client point (`ChapterDrag`): over the track it is included
   // when ignored, else moved to the slot; false when the point is not over the track. The bin's
   // own drop then does not run.
@@ -2298,6 +2238,7 @@ export function EventEditor({
       onMoveSelection,
       overBin,
       trackAt,
+      menuAt,
       onPoster,
       onAdd: cutHandlers.onAdd,
       onRemove: cutHandlers.onRemove,
@@ -2405,41 +2346,12 @@ export function EventEditor({
     resolved,
   ])
   const { keep: keepSelection, open: openCard, selected: selectedCard } = cards
-  // The bin's rows read the clips the selection holds, a stable set per chapter while they are
-  // the same, so a press redraws only the chapters whose rows change. They follow the selection in
+  // The bin's rows read the clips the selection holds. They follow the selection in
   // a low-priority render (`useDeferredValue`): the track and the inspector paint first, and a
   // Shift range over 400 rows redraws the bin after that, in slices, not in the press's frame
   // (`clip-multi-select`, the 100 ms gate).
   const binSelection = useDeferredValue(cards.selection)
   const selectedSet = useMemo(() => new Set(selectedClips(binSelection)), [binSelection])
-  const selectedCache = useRef(new Map<string, ReadonlySet<string>>())
-  const selectedIn = (
-    chapter: ChapterKey,
-    order: readonly string[],
-    ...also: readonly (readonly string[])[]
-  ): ReadonlySet<string> => {
-    // The clips a chapter lists but does not play (ignored, removed) are selectable rows too.
-    const next =
-      selectedSet.size === 0
-        ? []
-        : [order, ...also].flatMap((list) => list.filter((identity) => selectedSet.has(identity)))
-    if (next.length === 0) {
-      selectedCache.current.delete(chapter)
-      return NO_CLIPS
-    }
-    const was = selectedCache.current.get(chapter)
-    if (was !== undefined && was.size === next.length && next.every((identity) => was.has(identity))) {
-      return was
-    }
-    const made: ReadonlySet<string> = new Set(next)
-    selectedCache.current.set(chapter, made)
-    return made
-  }
-  // The clip pressed last, for the chapter that plays it only: the other chapters' rows get null,
-  // so a press redraws no more of them than the set does.
-  const leadId = lastClip(binSelection)
-  const leadIn = (order: readonly string[]): string | null =>
-    leadId !== null && order.includes(leadId) ? leadId : null
   // A press on a bin row (its click or its name): a Shift press ranges over the rows' page order,
   // the clips the bin lets be selected (on disk, not excluded) of every chapter that is listed.
   const binPress = useRef<(identity: string, press: Press) => void>(() => undefined)
@@ -2477,6 +2389,30 @@ export function EventEditor({
     binPress.current(identity, 'alone')
     setWatchAsk((asked) => asked + 1)
   }, [])
+  // The bin's rows (`plain-clip-bin` D1): every clip of the event, as the draft stands.
+  const binRowsNow = useMemo(
+    () =>
+      ready === null || detail === null
+        ? []
+        : binRows(ready.draft, ready.baseline, detail, ready.typed, ready.lastMoved),
+    // The draft, the read and the clips with a typed cut are all the rows read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ready?.draft, ready?.baseline, detail, ready?.typed, ready?.lastMoved],
+  )
+  // What the bin's rows ask of the editor: a press selects as the track does, the frame watches,
+  // a right-click or Shift+F10 asks the Timeline for the clip's menu, and an ignored clip's row
+  // dragged onto the track includes it there.
+  const binHandlers = useMemo<BinHandlers>(
+    () => ({
+      onPress: selectClip,
+      onWatch: watchClip,
+      onOpenMenu: (open) => menuAt.current?.(open) ?? false,
+      onDropOutside: onDropOnTrack,
+      onLift,
+      onAnnounce: announce,
+    }),
+    [selectClip, watchClip, onDropOnTrack, onLift, announce],
+  )
   // A clip that left the event ends its selection (`keptSelection`). The clips the event lists, not
   // the ones the track draws: the Clip tab also shows an ignored or a missing clip. A set keeps only
   // the clips that can still join one (the rule `binPress` joins by), so a clip that stops being
@@ -2870,11 +2806,6 @@ export function EventEditor({
     [announce],
   )
 
-  // The drag across chapters (`ChapterDrag`): what it reads, and its drop. It speaks
-  // through dnd-kit's live region, as a drag within a chapter does.
-  const listedKeys = useMemo(() => listed.map((chapter) => chapter.key), [listed])
-  // A clip that cannot be marked (missing) never leaves its chapter by a drag either.
-  const staysHome = useCallback((identity: string) => !onDisk(clips.get(identity)), [clips])
   // Asked only while a clip is lifted: the draft then is the latest one.
   const nameOfClip = useCallback(
     (identity: string) => {
@@ -2885,115 +2816,8 @@ export function EventEditor({
     },
     [ignoredOf, removedByChapter],
   )
-  const headingOfChapter = useCallback(
-    (key: ChapterKey) => (latest.current === null ? '' : headingIn(latest.current.draft, key)),
-    [],
-  )
-  // Not while a save or a move of marked clips is pending, and only a clip on disk; false when refused.
-  // Synchronous, not in a transition: the dragged copy leaves in the commit that shows the
-  // clip in place.
-  const onDropInto = useCallback(
-    (identity: string, from: ChapterKey, to: ChapterKey, at: number) => {
-      if (!idle(latest.current) || !onDisk(clips.get(identity))) {
-        return false
-      }
-      dispatch({ type: 'clip-drop', from, to, identity, at })
-      return true
-    },
-    [clips],
-  )
-
-  // Marks (edit/marks.ts): the clips a chapter plays that are on disk can be marked. The marks
-  // in force are the state's, less any clip that cannot carry one (defensive: a mark is only
-  // ever made on such a clip).
-  const markable = useMemo(
-    () =>
-      new Set(
-        [...(orders?.values() ?? [])].flatMap((order) =>
-          order.filter((identity) => canMark(clips.get(identity))),
-        ),
-      ),
-    [orders, clips],
-  )
-  const readMarks = ready?.marked
-  const marks = useMemo(
-    () => (readMarks === undefined ? NO_MARKS : pruneMarks(readMarks, markable)),
-    [readMarks, markable],
-  )
-  // Each listed chapter's marked clips: one set per chapter that keeps its identity while the
-  // chapter's own marks are unchanged, so marking in one chapter re-renders no other list.
-  const marksCache = useRef(new Map<ChapterKey, ReadonlySet<string>>())
-  const marksIn = useMemo(() => {
-    const result = new Map<ChapterKey, ReadonlySet<string>>()
-    for (const key of listedKeys) {
-      const order = orders?.get(key) ?? NONE_REMOVED
-      const mine = marks.size === 0 ? [] : order.filter((identity) => marks.has(identity))
-      const previous = marksCache.current.get(key) ?? NO_MARKS
-      result.set(
-        key,
-        previous.size === mine.length && mine.every((identity) => previous.has(identity))
-          ? previous
-          : new Set(mine),
-      )
-    }
-    marksCache.current = result
-    return result
-  }, [listedKeys, orders, marks])
-  const markLineRef = useRef<HTMLDivElement | null>(null)
-  // Where the bin's player puts its Show player while hidden: the toolbar's first row.
+  // Where the bin's player puts its Show player while hidden: the bin header's first row.
   const [showSlot, setShowSlot] = useState<HTMLElement | null>(null)
-  const playerShown = useBinPlayerShown()
-  const rotateHintId = useId()
-  // The bin's toolbar as drawn: it grows with the reason line or the Clips help, and the chapter
-  // headings and the scroll padding follow (`--bin-toolbar-measured` on its parent, workspace.css).
-  // A callback ref: the bin mounts its slots on its own schedule, not with `detail`.
-  const stopMeasuring = useRef<(() => void) | null>(null)
-  const placeMarkLine = useCallback((line: HTMLDivElement | null) => {
-    markLineRef.current = line
-    stopMeasuring.current?.()
-    stopMeasuring.current = null
-    const bin = line?.parentElement
-    if (!line || !bin || typeof ResizeObserver === 'undefined') {
-      return
-    }
-    const measure = () => bin.style.setProperty('--bin-toolbar-measured', `${line.offsetHeight}px`)
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(line)
-    stopMeasuring.current = () => {
-      observer.disconnect()
-      bin.style.removeProperty('--bin-toolbar-measured')
-    }
-  }, [])
-
-  // A mark or Clear marks: not while a save or a move of marked clips is pending, nor while a clip is
-  // lifted (the group a drag lifted is the group it drops). Spoken once through the live region.
-  const onMark = useCallback<MarkHandler>(
-    (identity, on) => {
-      const current = latest.current
-      if (!idle(current) || lifted.current || (on && !canMark(clips.get(identity)))) {
-        return
-      }
-      const marked = toggleMark(current.marked, identity, on)
-      if (marked === current.marked) {
-        return
-      }
-      dispatch({ type: 'mark', identity, on })
-      announce(markWords(nameOfClip(identity), on, marked.size))
-    },
-    [clips, announce, nameOfClip],
-  )
-  const onClearMarks = useCallback(() => {
-    const current = latest.current
-    if (!idle(current) || lifted.current || current.marked.size === 0) {
-      return
-    }
-    dispatch({ type: 'marks-clear' })
-    announce(CLEARED_WORDS)
-    // The button leaves with the count: focus goes to the line, not to <body>.
-    markLineRef.current?.focus({ preventScroll: true })
-  }, [announce])
-
   // Rotate left / right (`rotate/`): a clip on disk, not while a save or a move of marked clips is pending
   // nor while a clip is lifted. One draft edit, spoken once with the turn the clip now has.
   const onRotate = useCallback<RotateHandler>(
@@ -3149,100 +2973,6 @@ export function EventEditor({
     ).find((candidate) => candidate.dataset.identity === next)
     ;(block ?? document.querySelector<HTMLElement>('.tl-viewport'))?.focus({ preventScroll: true })
   })
-
-  // Rotate marked left / right: every marked clip on disk, each from its own turn, one edit.
-  // The marks stay.
-  const onRotateMarked = useCallback(
-    (way: Way) => {
-      const current = latest.current
-      if (!idle(current) || lifted.current) {
-        return
-      }
-      const group = groupOf(current.draft.orders, listedKeys, current.marked).filter((identity) =>
-        onDisk(clips.get(identity)),
-      )
-      if (rotateGroup(current.baseline, current.draft, group, way, () => true) === current.draft) {
-        return
-      }
-      dispatch({ type: 'rotate', identities: group, way })
-      announce(groupTurnAnnouncement(group.length, way))
-    },
-    [clips, announce, listedKeys],
-  )
-
-  // A group drop (`ChapterDrag`): the marked clips as one run at a gap of `to`, one edit.
-  // False when it changes nothing or is refused (save or move of marked clips pending); the marks stay.
-  const onDropGroup = useCallback(
-    (dragged: string, to: ChapterKey, gap: number) => {
-      const current = latest.current
-      if (!idle(current) || !isListed(current.draft, to)) {
-        return false
-      }
-      const group = groupOf(current.draft.orders, listedKeys, current.marked)
-      if (group.length < 2 || !group.includes(dragged)) {
-        return false
-      }
-      if (moveGroup(current.draft, group, to, gap) === current.draft) {
-        return false
-      }
-      dispatch({ type: 'group-drop', dragged, to, gap })
-      return true
-    },
-    [listedKeys],
-  )
-
-  // Move marked to…: the marked clips, in page order, at the end of the chosen chapter, one
-  // edit by the drag's own (`moveMarkedToEnd`). Applied in a transition (a 400-clip chapter
-  // re-renders every row); until it lands every control acting on the lists is unavailable.
-  const onMoveMarked = useCallback(() => {
-    const current = latest.current
-    if (!idle(current) || lifted.current || moveTo === '' || current.marked.size === 0) {
-      return
-    }
-    const { moved } = moveMarkedToEnd(current.draft, listedKeys, current.marked, moveTo)
-    if (moved.length === 0) {
-      announce(NOTHING_MOVED)
-      return
-    }
-    moving.current = true
-    setMarkedPending(true)
-    startTransition(() => {
-      dispatch({ type: 'marked-move', to: moveTo })
-      setMarkedPending(false)
-    })
-    announce(movedWords(moved.length, headingIn(current.draft, moveTo)))
-  }, [announce, listedKeys, moveTo])
-  // The chosen chapter leaves the picker when it is deleted (or the event stops listing it).
-  useEffect(() => {
-    if (moveTo !== '' && !listedKeys.includes(moveTo)) {
-      setMoveTo('')
-    }
-  }, [listedKeys, moveTo])
-  const moveReasonId = useId()
-  const moveSelectId = useId()
-  const moveLabelId = useId()
-  // The reason line shows only once Move is pressed while it cannot act; it goes when Move can.
-  const [moveReasonShown, setMoveReasonShown] = useState(false)
-  const moveWhy = moveReason(marks.size, moveTo !== '', listsLocked)
-  useEffect(() => {
-    if (moveWhy === null) {
-      setMoveReasonShown(false)
-    }
-  }, [moveWhy])
-  const moveWhyWords =
-    moveWhy === null
-      ? ''
-      : moveWhy === 'busy' && selectionPending && !locked
-        ? MOVING_WORDS
-        : MOVE_REASON_WORDS[moveWhy]
-  const onMovePressed = () => {
-    if (moveWhy !== null) {
-      setMoveReasonShown(true)
-      announce(moveWhyWords)
-      return
-    }
-    onMoveMarked()
-  }
 
   // Each listed chapter's tools: what it offers, its notes and why it cannot go. A
   // chapter's object is kept while what it shows is unchanged, so its list re-renders
@@ -3576,7 +3306,6 @@ export function EventEditor({
   const hasIgnored = chapters.some((chapter) => chapter.ignored.length > 0)
   const hasMissing = [...clips.values()].some((clip) => clip.status === 'missing')
   const newClipsText = newClipsLine(adopted, newClips.size > 0, plural(adopted, 'new clip', 'new clips'))
-  const clipCount = chapters.reduce((sum, chapter) => sum + chapter.movable.length, 0)
 
   // The inspector's Clip tab (`clip-tab-and-player` D5), built from the draft and the read, so it is
   // there with no track (Prepare) and for a clip the track does not draw: the clips of a set, or the
@@ -3830,224 +3559,25 @@ export function EventEditor({
           )}
 
           {detail !== null && (
-            // How clips are marked, and, once any is, how many and Clear marks. Its slot keeps
-            // its height and room either way, so the first mark moves no row.
-            <div
-              ref={placeMarkLine}
-              className="mark-line"
-              data-player={playerShown ? 'shown' : 'hidden'}
-              tabIndex={-1}
-            >
-              <div className="mark-head">
-                <span className="mark-lead">
-                  <HelpToggle help={clipsHelp} section="Clips" />
-                  <span ref={setShowSlot} className="mark-lead-player" />
-                </span>
-                <span className="mark-line-slot">
-                  <span className="mark-count" hidden={marks.size === 0}>
-                    {countWords(marks.size)}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-compact"
-                    hidden={marks.size === 0}
-                    title="Clear marks"
-                    aria-disabled={listsLocked || undefined}
-                    onClick={onClearMarks}
-                  >
-                    <span className="mark-clear-icon">
-                      <Icon name="x" />
-                    </span>
-                    <span className="mark-clear-words">Clear marks</span>
-                  </button>
-                </span>
-              </div>
-              <HelpPanel help={clipsHelp}>
-                {clipsHelpLines({
-                  several: listed.length > 1,
-                  hasIgnored,
-                  hasMissing,
-                  ownChapter: listed.some((chapter) => chapter.name === ''),
-                  hasNewClip: inWorkspace && newClips.size > 0,
-                }).map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </HelpPanel>
-              <div className="mark-actions">
-                <span className="mark-rotate" role="group" aria-label="Marked clips">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-compact"
-                    aria-disabled={listsLocked || marks.size === 0 || undefined}
-                    aria-describedby={marks.size === 0 ? rotateHintId : undefined}
-                    title="Rotate marked left"
-                    onClick={() => onRotateMarked('left')}
-                  >
-                    <Icon name="rotate-ccw" />
-                    <span className="mark-words">Rotate marked left</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-compact"
-                    aria-disabled={listsLocked || marks.size === 0 || undefined}
-                    aria-describedby={marks.size === 0 ? rotateHintId : undefined}
-                    title="Rotate marked right"
-                    onClick={() => onRotateMarked('right')}
-                  >
-                    <Icon name="rotate-cw" />
-                    <span className="mark-words">Rotate marked right</span>
-                  </button>
-                  <span id={rotateHintId} className="visually-hidden">
-                    Mark clips to rotate them together.
-                  </span>
-                </span>
-                {listedKeys.length > 1 && (
-                  <span className="mark-move" role="group" aria-labelledby={moveLabelId}>
-                    <label id={moveLabelId} htmlFor={moveSelectId} className="mark-move-label">
-                      Move marked to…
-                    </label>
-                    <select
-                      id={moveSelectId}
-                      className="field-input"
-                      aria-label="Chapter to move the marked clips to"
-                      value={moveTo}
-                      aria-disabled={listsLocked || undefined}
-                      aria-describedby={moveReasonId}
-                      onChange={(event) => {
-                        if (!listsLocked) {
-                          setMoveTo(event.currentTarget.value)
-                        }
-                      }}
-                    >
-                      <option value="">Choose a chapter</option>
-                      {listed.map((chapter) => (
-                        <option key={chapter.key} value={chapter.key}>
-                          {chapterHeading(chapter.name, hasNamedChapter)}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-compact"
-                      aria-disabled={listsLocked || moveWhy !== null || undefined}
-                      aria-busy={markedPending || undefined}
-                      aria-describedby={moveReasonId}
-                      title={moveWhy === null ? undefined : moveWhyWords}
-                      onClick={onMovePressed}
-                    >
-                      <Icon name="arrow-right" />
-                      Move
-                    </button>
-                  </span>
-                )}
-              </div>
-              {listedKeys.length > 1 && (
-                <p id={moveReasonId} className={moveReasonShown ? 'mark-move-why' : 'visually-hidden'}>
-                  {moveWhyWords}
-                </p>
-              )}
-            </div>
+            <ClipBin
+              eventId={eventId}
+              rows={binRowsNow}
+              clips={clips}
+              turns={draftTurns}
+              selected={selectedSet}
+              lead={lastClip(binSelection)}
+              help={clipsHelp}
+              helpLines={clipsHelpLines({
+                several: listed.length > 1,
+                hasIgnored,
+                hasMissing,
+                ownChapter: listed.some((chapter) => chapter.name === ''),
+                hasNewClip: inWorkspace && newClips.size > 0,
+              })}
+              showSlot={setShowSlot}
+              handlers={binHandlers}
+            />
           )}
-
-          {detail !== null && clipCount === 0 && !hasIgnored && (
-            <p className="empty-state">
-              <Icon name="film" size={20} />
-              No clips.
-            </p>
-          )}
-
-          {detail !== null && (
-            <CardButtonContext.Provider value={cardButtons}>
-              <ChapterDrag
-                orders={ready.draft.orders}
-                listed={listedKeys}
-                staysHome={staysHome}
-                nameOf={nameOfClip}
-                headingOf={headingOfChapter}
-                locked={listsLocked}
-                onReorder={onMove}
-                onDropInto={onDropInto}
-                marked={marks}
-                onDropGroup={onDropGroup}
-                onLift={onLift}
-                overTrack={overTrack}
-                onDropOutside={onDropOnTrack}
-                rootRef={editorRef}
-              >
-                {ready.draft.chapters.map((chapter) =>
-                  // A deleted chapter is listed in the Chapters list only, with its Undo.
-                  chapter.deleted ? null : (
-                    <ClipOrderList
-                      key={chapter.key}
-                      eventId={eventId}
-                      chapterKey={chapter.key}
-                      name={chapter.name}
-                      heading={chapterHeading(chapter.name, hasNamedChapter)}
-                      order={ready.draft.orders.get(chapter.key) ?? NONE_REMOVED}
-                      original={ready.baseline.original.get(chapter.key) ?? NONE_REMOVED}
-                      ignored={ignoredOf.get(chapter.key) ?? NONE_REMOVED}
-                      removed={removedByChapter.get(chapter.key) ?? NONE_REMOVED}
-                      clips={clips}
-                      origins={origins}
-                      lastMoved={ready.lastMoved}
-                      locked={listsLocked}
-                      alone={listed.length < 2}
-                      cuts={ready.draft.cuts}
-                      baseCuts={ready.baseline.cuts}
-                      typed={ready.typed}
-                      panels={cutPanels.panels}
-                      resets={ready.resets}
-                      cutHandlers={cutHandlers}
-                      marked={marksIn.get(chapter.key) ?? NO_MARKS}
-                      turns={ready.draft.rotations}
-                      baseTurns={baseTurns}
-                      onMark={onMark}
-                      onRotate={onRotate}
-                      onMove={onMove}
-                      onRemove={onRemove}
-                      onRestore={onRestore}
-                      onInclude={onIncludeClip}
-                      onAnnounce={announce}
-                      compact={inWorkspace}
-                      selectedClips={selectedIn(
-                        chapter.key,
-                        ready.draft.orders.get(chapter.key) ?? NONE_REMOVED,
-                        ignoredOf.get(chapter.key) ?? NONE_REMOVED,
-                        removedByChapter.get(chapter.key) ?? NONE_REMOVED,
-                      )}
-                      leadClip={leadIn(ready.draft.orders.get(chapter.key) ?? NONE_REMOVED)}
-                      onSelectClip={selectClip}
-                      onWatchClip={watchClip}
-                      ignoredApart={ignoredApart}
-                    />
-                  ),
-                )}
-                {detail !== null && ignoredApart && (
-                  <IgnoredBin
-                    eventId={eventId}
-                    groups={ignoredGroups(ready.draft.chapters, ignoredOf, (name) =>
-                      chapterHeading(name, hasNamedChapter),
-                    )}
-                    clips={clips}
-                    locked={listsLocked}
-                    onInclude={onIncludeClip}
-                    selectedClips={selectedSet}
-                    onSelectClip={selectClip}
-                    nameOf={(group) =>
-                      namesIn(
-                        group.name,
-                        ready.baseline.original.get(group.key) ?? [],
-                        ready.draft.orders.get(group.key) ?? [],
-                        group.identities,
-                        removedByChapter.get(group.key) ?? [],
-                      )
-                    }
-                  />
-                )}
-              </ChapterDrag>
-            </CardButtonContext.Provider>
-          )}
-
           </>,
           saveBar: <>
           {/*
