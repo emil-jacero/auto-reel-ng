@@ -77,5 +77,5 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
     note that `@dnd-kit/react` will replace it is dropped.
   - `docs/editor-workspace.md`: rewrite rows 1.3 and 3.1–3.3 to the plain list and the information, and add a row for
     `plain-clip-bin`.
-- [ ] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate plain-clip-bin
+- [x] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate plain-clip-bin
   --strict`.
