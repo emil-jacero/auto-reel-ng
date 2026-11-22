@@ -58,7 +58,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 3. Verification and record
 
-- [ ] 3.1 Run Playwright in Chromium and Firefox over every scenario of the delta (`web-app`, `clip-rotation`),
+- [x] 3.1 Run Playwright in Chromium and Firefox over every scenario of the delta (`web-app`, `clip-rotation`),
   including every MODIFIED requirement's scenarios. Also:
   - report the rows in view at 1280×720 and 1440×900, with the player and the information shown and hidden;
   - keep the windowing gates: no jump while scrolling 400 rows, and a scroll height within 5 %;
