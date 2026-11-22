@@ -19,6 +19,14 @@ export const NOTHING_MOVED = 'Nothing moved.'
 /** What an Ignore that ignores nothing says (every clip missing from disk or not played). */
 export const NOTHING_IGNORED = 'Nothing ignored.'
 
+/**
+ * What a drop of a selected group on the video track says: one ignored clip's row of several
+ * selected drags the clip, and a group is not dropped there (`plain-clip-bin`, "A marked group is
+ * not dropped on the video track"). The Clip tab's Include clips includes them.
+ */
+export const GROUP_DROP_WORDS =
+  'A group of clips cannot be dropped on the video track. Nothing moved. Include clips in the Clip tab includes them.'
+
 /** Why a move control is unavailable while a save is in flight. */
 export const SAVING_WORDS = 'Unavailable while saving.'
 

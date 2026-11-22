@@ -62,9 +62,10 @@ export type BinHandlers = {
   onOpenMenu: (open: ClipMenuOpen) => boolean
   /**
    * An ignored clip's row released at a client point: over the track the editor includes it and
-   * this returns true; false when the point is not over the track.
+   * this returns true; false when the point is not over the track. `group` is true when the row
+   * belongs to a selection of several clips: the editor then includes nothing and says so.
    */
-  onDropOutside: (identity: string, x: number, y: number) => boolean
+  onDropOutside: (identity: string, x: number, y: number, group: boolean) => boolean
   /** Whether a clip is held by the drag now: the editor holds its edits meanwhile. */
   onLift: (lifted: boolean) => void
   onAnnounce: (message: string) => void
@@ -273,8 +274,8 @@ export function ClipBin({
         : (order[0] ?? null)
 
   const nodes = useRef(new Map<string, HTMLElement>())
-  const latest = useRef({ handlers, order })
-  latest.current = { handlers, order }
+  const latest = useRef({ handlers, order, selected })
+  latest.current = { handlers, order, selected }
   const focusedId = useRef<string | null>(null)
   const [drag, setDrag] = useState<{ identity: string; name: string; x: number; y: number } | null>(
     null,
@@ -305,7 +306,11 @@ export function ClipBin({
         window.setTimeout(() => {
           suppressClick.current = false
         }, 0)
-        if (drop !== null && !latest.current.handlers.onDropOutside(row.identity, drop.x, drop.y)) {
+        const group = latest.current.selected.size > 1 && latest.current.selected.has(row.identity)
+        if (
+          drop !== null &&
+          !latest.current.handlers.onDropOutside(row.identity, drop.x, drop.y, group)
+        ) {
           latest.current.handlers.onAnnounce(`Dropped ${row.name}. It is still ignored.`)
         }
       }

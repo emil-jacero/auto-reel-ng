@@ -176,7 +176,7 @@ import type {
   EditableChapter,
   MetadataField,
 } from './draft'
-import { NOTHING_IGNORED, NOTHING_MOVED, movedWords } from './moveWords'
+import { GROUP_DROP_WORDS, NOTHING_IGNORED, NOTHING_MOVED, movedWords } from './moveWords'
 import { FIELD_LABEL, inheritHint, MetadataForm } from './MetadataForm'
 import type { Resolved } from './MetadataForm'
 import { PosterPanel } from './PosterPanel'
@@ -2068,10 +2068,15 @@ export function EventEditor({
   // when ignored, else moved to the slot; false when the point is not over the track. The bin's
   // own drop then does not run.
   const onDropOnTrack = useCallback(
-    (identity: string, x: number, y: number): boolean => {
+    (identity: string, x: number, y: number, group: boolean): boolean => {
       const target = trackAt.current?.(x, y, identity) ?? null
       if (target === null) {
         return false
+      }
+      // A row of a selection of several is not a drag of the group: nothing moves.
+      if (group) {
+        announce(GROUP_DROP_WORDS)
+        return true
       }
       const current = latest.current
       if (!idle(current)) {
