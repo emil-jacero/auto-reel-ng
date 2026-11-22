@@ -67,7 +67,7 @@ export function binOrder(rows: readonly BinRow[]): readonly string[]  // the ord
 ### D2. The list (`edit/ClipBin.tsx`)
 ```tsx
 <section class="bin">              // the bin pane: a column
-  <header> Clips · N  <HelpToggle section="Clips"/> </header>
+  <header> Clips · N  <HelpToggle section="Clips"/> <ShowPlayer/> </header>  // Show player only while hidden
   <BinPlayer/>                     // clip-tab-and-player
   <div role="listbox" aria-multiselectable="true" aria-label="Clips" data-ws-scroll>
     <div role="group" aria-label="Clips in play order"> <div role="option" aria-selected …/> … </div>
@@ -212,9 +212,11 @@ REMOVED with its migration.
   explicit Enter or click changes the selection, and it is announced once, as "One selection in the workspace" says.
 - [The bin is short. At 1280×720 it is about 390 px tall, and the player (about 230–300 px with its controls) plus the
   information (up to 30 %) leave no whole row. At 1440×900 they leave about one] → Hide player and Hide information
-  give the room back, and the choices are kept. The spec states the hidden case (all 5 rows of Tjörn at 1280×720) and
-  1 row with both shown at 1440×900. Task 3.1 measures and reports both. Hiding them by default in short windows is
-  an open choice for the operator.
+  give the room back, and the choices are kept. The player already starts hidden, while no choice is stored, in a
+  side pane shorter than 70.125rem (`clip-tab-and-player`, "Edit mode previews a clip on request"), so at 1280×720
+  and 1440×900 the list gets the player's room by default; this change keeps that rule. The spec states the hidden
+  case (all 5 rows of Tjörn at 1280×720) and 1 row with both shown at 1440×900. Task 3.1 measures and reports both.
+  Hiding the information by default in short windows is still an open choice for the operator.
 - [Removing `@dnd-kit` breaks a surface that still uses it] → D6 removes it only when nothing imports it, and the
   build gate catches a missed import.
 
