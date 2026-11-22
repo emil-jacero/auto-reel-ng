@@ -68,7 +68,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 - [ ] 3.1b A person runs Orca with Firefox over the bin's list and checks that it announces a row's name, place
   and selected state, and the selection once. Not done by Playwright (Orca cannot run headless): leave this open
   until someone has done it, and name the gap in the PR description.
-- [ ] 3.2 Record the change:
+- [x] 3.2 Record the change:
   - HLD D-28: amend "No List view". The bin is one plain list, and the non-pointer reorder path is the Clip tab's Move
     earlier, Move later and Move to…. Remove the marks from D-28's text, and note what the information shows and
     why there is no source resolution.

@@ -16,8 +16,8 @@ Edit mode stops being a long page of stacked panels and becomes a full-window wo
 left, a **viewer** in the centre, an **inspector** on the right and a full-width **timeline** at the bottom. The
 timeline becomes the main editing surface: clips are reordered and moved between chapters on the track itself.
 The read view (`#/event/<id>`) stays as it is; **Edit** opens the workspace and **Done** leaves it. There is no
-separate List view: the bin is today's chapter lists in compact form, so keyboard and screen-reader reordering keep
-working.
+separate List view: the bin is one plain list of every clip, and keyboard and screen-reader reordering is the Clip
+tab's Move earlier, Move later and Move to… (`plain-clip-bin`).
 
 ## Legend
 
@@ -35,7 +35,7 @@ working.
 |---|---|---|
 | 1.1 | Edit opens a full-window workspace (bin · viewer · inspector · timeline); Done returns to the read view | new-web |
 | 1.2 | Workspace is dark by default (footage stands out); the read view keeps following the system theme | new-web |
-| 1.3 | No List view: the bin *is* today's chapter lists (keyboard reorder kept); narrow windows stack the panes | new-web |
+| 1.3 | No List view and no second layout: the bin is one plain list of every clip (`plain-clip-bin`); keyboard and screen-reader reorder is the Clip tab's Move earlier, Move later and Move to…; narrow windows stack the panes | new-web |
 | 1.4 | Fixed panes: bin `clamp(240px, 22vw, 320px)` (282 px at 1280, 317 px at 1440; `compact-bin-tools`), inspector 340 px, timeline ~340 px tall, viewer takes the rest | new-web |
 
 ### 2. Top bar
@@ -51,9 +51,9 @@ working.
 
 | # | Feature | Tag |
 |---|---|---|
-| 3.1 | "On timeline" list: filmstrip thumbnail, file name, kept length | new-web |
-| 3.2 | Selection is shared with the track: selecting in the bin selects on the track and the reverse | new-web |
-| 3.3 | "Not on timeline" section with **New** and **Ignored** clips (pills) — also the place for missing clips | reuse |
+| 3.1 | One plain list of every clip in play order (`plain-clip-bin`): frame, file name, chapter and position, kept length, status icon; a row holds no control | new-web |
+| 3.2 | Selection is shared with the track: selecting in the bin selects on the track and the reverse; Ctrl/Cmd+click, Shift+click and the keyboard select several; right-click or Shift+F10 opens the clip menu | new-web |
+| 3.3 | Under the played clips, "Ignored · N clips, not played" and "Removed from reel.yaml when you save · N clips" (New and missing clips keep their place in the list, by their status icon); the player above the list and the clip's information below it (metadata and cuts, read only) | reuse / new-web |
 | 3.4 | Drag a clip from the bin onto the video track to include it; drag off the track to ignore it | new-web |
 
 ### 4. Viewer (centre)
@@ -118,8 +118,9 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | 8 | `clip-multi-select` ✅ built 2026-11-19 (HLD D-28) | the selection may hold several clips (Ctrl/Cmd+click, Shift+click, Ctrl/Shift+Enter); a Clip tab, the clip menu and a drag with a drop line act on the set, each as one Undo step; the marks stay until `plain-clip-bin` | 7 | 2 days |
 | 9 | `chapters-in-inspector` ✅ built 2026-11-19 (HLD D-28) | the Event tab lists the chapters (Edit title card, Move up/down, Delete, Add chapter); the bin's chapter headings become plain; an empty chapter's hint points at Move to…; the bin keeps its sections, drag and marks until `plain-clip-bin` | 8 | 1 day |
 | 10 | `clip-tab-and-player` ✅ built 2026-11-20 (HLD D-28) | a player docked above the bin's lists shows the selected clip, loads on Play only and hides (kept in the browser); the Clip tab is built by the editor for any clip (Move earlier/later, Include, Ignore, Remove), the Timeline adding trims, cuts and poster; the bin rows keep their buttons until `plain-clip-bin` | 9 | 2 days |
+| 11 | `plain-clip-bin` ✅ built 2026-11-22 (HLD D-28) | the bin is one plain list of every clip (3.1, 3.3) with the player above and the clip's information below; selecting and the clip menu as on the track (3.2); the Cuts panel moves into the Clip tab; the marks, chapter sections, handles, row buttons and `@dnd-kit` are gone, so this reverses D-28's "no List view" for the bin's shape only (1.3) | 10 | 2 days |
 
-Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15): the bin follows the window's
+Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15; its two-line rows, marks line and row counts below were replaced by `plain-clip-bin`, row 11): the bin follows the window's
 width (`clamp(240px, 22vw, 320px)`) and its compact tools take less height. Clip rows are two lines with a fine
 pointer, the marks line is two fixed sticky rows with icon-only Rotate and Help, the chapter's Move up, Move down and
 Delete sit in its header bar as named icon buttons, an ignored clip is one line, and the new-clip line is gone (the
