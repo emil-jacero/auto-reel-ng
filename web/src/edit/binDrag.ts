@@ -22,3 +22,11 @@ export function rowDrags(row: Pick<BinRow, 'group' | 'onDisk'>): boolean {
 export function pointerDrags(pointerType: string): boolean {
   return pointerType === 'mouse' || pointerType === 'pen'
 }
+
+/**
+ * Whether the row of `identity` is dragged as a group: it is one of several selected clips. Such a
+ * drop on the track includes nothing and keeps the selection (`GROUP_DROP_WORDS`).
+ */
+export function dragsGroup(selected: ReadonlySet<string>, identity: string): boolean {
+  return selected.size > 1 && selected.has(identity)
+}

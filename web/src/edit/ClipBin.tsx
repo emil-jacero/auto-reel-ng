@@ -27,7 +27,7 @@ import type { SectionHelp } from '../ui/help/HelpToggle'
 import { Icon } from '../ui/Icon'
 import type { ClipMenuOpen } from '../timeline/editing'
 import { listKey, stepTo } from './binKeys.ts'
-import { pastSlop, pointerDrags, rowDrags } from './binDrag.ts'
+import { dragsGroup, pastSlop, pointerDrags, rowDrags } from './binDrag.ts'
 import {
   binOrder,
   ignoredCaption,
@@ -306,7 +306,7 @@ export function ClipBin({
         window.setTimeout(() => {
           suppressClick.current = false
         }, 0)
-        const group = latest.current.selected.size > 1 && latest.current.selected.has(row.identity)
+        const group = dragsGroup(latest.current.selected, row.identity)
         if (
           drop !== null &&
           !latest.current.handlers.onDropOutside(row.identity, drop.x, drop.y, group)
