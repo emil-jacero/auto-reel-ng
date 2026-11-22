@@ -1271,17 +1271,26 @@ export function useTimeline({
     const made = cutAtClipPlayhead({ clip, clips, editing, playhead })
     return made.ok ? null : made.words
   }
-  const openClipMenu = (open: ClipMenuOpen) => {
+  const openClipMenu = (open: ClipMenuOpen): boolean => {
     const clip = clips.find((c) => c.identity === open.identity)
     if (clip === undefined) {
-      return
+      return false
     }
     if (menuSelects(selection.selection, open.identity)) {
       selectClip(open.identity)
     }
     menuCount.current += 1
     setMenu({ id: menuCount.current, open, cutWhy: cutWhyFor(clip), posterWhy: posterWhyFor(clip) })
+    return true
   }
+  // The bin's rows open the same menu: the latest closure, while this is mounted.
+  const menuAt = editing.menuAt
+  useLayoutEffect(() => {
+    menuAt.current = openClipMenu
+    return () => {
+      menuAt.current = null
+    }
+  })
   // `focusOn`: where a choice sends focus (D5): the clip's block by default, another clip's block,
   // or (null) the track.
   const closeMenu = (
@@ -1307,7 +1316,14 @@ export function useTimeline({
       case 'escape':
       case 'tab':
       case 'choice':
-        menuFocus.current = () => focusBlock(focusOn === undefined ? identity : focusOn)
+        menuFocus.current = () => {
+          // A menu opened from a bin row gives focus back to the row, while it is still there.
+          if (focusOn === undefined && invoker.isConnected && invoker.getAttribute('role') === 'option') {
+            invoker.focus({ preventScroll: true })
+          } else {
+            focusBlock(focusOn === undefined ? identity : focusOn)
+          }
+        }
         return
       case 'outside':
         // The press goes on to its target first; focus comes back only if it was left nowhere.

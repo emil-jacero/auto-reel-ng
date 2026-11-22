@@ -30,7 +30,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
 
 ## 2. Wiring (web/src/edit, web/src/timeline, web/src/cuts)
 
-- [ ] 2.1 `ClipBin` (design D2): the listbox, `listKey` with its unit test, pointer presses, the frame's watch, the
+- [x] 2.1 `ClipBin` (design D2): the listbox, `listKey` with its unit test, pointer presses, the frame's watch, the
   row menu, and the ignored row's drag. It replaces `ChapterDrag` and `ClipOrderList` in the workspace's bin slot.
   Verify with `npm test` and `npm run check`, then in Playwright with the scenarios of "The clip bin lists every clip
   of the event as one plain list" and "The bin's list selects clips as the track does and opens their menu".
