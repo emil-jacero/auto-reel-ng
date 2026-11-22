@@ -31,6 +31,7 @@ import type { ClipAction } from './clipMenu'
 import { clipPlace, clipSelectedWords, cutSelectedWords, lengthWords } from './clipPanel'
 import { addCutAtPlayhead, cutAtClipPlayhead } from './cutAtPlayhead'
 import { ClipTrackPart } from './ClipTrackPart'
+import type { TrackCutsView } from './trackCuts'
 import { CutFields } from './CutFields'
 import type { Selected } from './CutFields'
 import { posterFromPlayhead, USE_AS_POSTER } from '../edit/poster.ts'
@@ -1306,6 +1307,28 @@ export function useTimeline({
     })
     return true
   }
+  // What the Clip tab's Cuts panel borrows while the track draws its clip (`plain-clip-bin` D4):
+  // "+ Cut at playhead" and each cut's Edit. The panel is the editor's; this is the one bridge.
+  const trackCuts = editing.trackCuts
+  const cutAdder = useRef<(identity: string) => string | null>(() => null)
+  cutAdder.current = (identity) => {
+    const clip = clips.find((c) => c.identity === identity)
+    return clip === undefined ? null : addCutAtPlayhead({ clip, clips, editing, playhead })
+  }
+  const trackCutsView = useMemo<TrackCutsView>(
+    () => ({
+      drawn: new Set(clips.map((clip) => clip.identity)),
+      selected,
+      select,
+      selectClip,
+      add: (identity) => cutAdder.current(identity),
+    }),
+    [clips, selected, select, selectClip],
+  )
+  useLayoutEffect(() => {
+    trackCuts.set(trackCutsView)
+  }, [trackCuts, trackCutsView])
+  useLayoutEffect(() => () => trackCuts.set(null), [trackCuts])
   // The bin's rows open the same menu: the latest closure, while this is mounted.
   const menuAt = editing.menuAt
   useLayoutEffect(() => {
@@ -1790,14 +1813,9 @@ export function useTimeline({
         <>
           <ClipTrackPart
             clip={panelClipRow}
-            clips={clips}
             length={place === null ? null : lengthWords(place)}
             editing={editing}
             drag={drag}
-            playhead={playhead}
-            selectedKey={selected?.identity === panelClipRow.identity ? selected.key : null}
-            onSelectCut={select}
-            onSelectClip={selectClip}
             poster={posterControl('-clip', 'Use frame as poster', panelClipRow)}
           />
           <CutFields

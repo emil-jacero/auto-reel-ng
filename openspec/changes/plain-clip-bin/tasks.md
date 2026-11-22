@@ -38,7 +38,7 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   in `clipMenu.test.ts` and a reducer test (one Undo step). Verify in Playwright with the scenarios of "Edit mode offers
   a clip's edits in a menu", "The Clip tab acts on several selected clips" and "Edit mode removes a missing clip from
   reel.yaml on request".
-- [ ] 2.3 The Cuts panel in the Clip tab, merged with the track part's cuts, and the row's "typed" (design D4). Verify in
+- [x] 2.3 The Cuts panel in the Clip tab, merged with the track part's cuts, and the row's "typed" (design D4). Verify in
   Playwright:
   - every scenario of "Edit mode lists, adds and removes a clip's cuts";
   - "A clip's preview sets cut times at the playhead and plays the clip as the movie will";

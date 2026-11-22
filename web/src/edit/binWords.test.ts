@@ -44,7 +44,7 @@ describe('rowWords', () => {
   it('says a move and a typed cut', () => {
     assert.equal(
       rowWords(row({ moved: 'was 4', typed: true })),
-      's1710002.mp4, Kvällen · 2 of 3 · was 4, Included, kept 0:06.02, a typed cut waits',
+      's1710002.mp4, Kvällen · 2 of 3 · was 4, Included, kept 0:06.02, a cut typed, not added',
     )
   })
 

@@ -7,6 +7,7 @@ import type { Turn, Way } from '../rotate/turn.ts'
 import type { EdgeEdit } from './edgeTrim.ts'
 import type { GroupSlot } from './clipDrag.ts'
 import type { DropSlot } from './reorder.ts'
+import type { TrackCutsBridge } from './trackCuts.ts'
 
 /*
  * What Edit mode gives the Timeline (`timeline-trim`): the draft's cuts to draw and play,
@@ -152,6 +153,8 @@ export type EditBinding = {
   trackAt: TrackBridge
   /** Where the bin's rows ask for a clip's menu (the Timeline keeps it current while mounted). */
   menuAt: MenuBridge
+  /** What the Timeline lends the Clip tab's Cuts panel for a clip it draws: "+ Cut at playhead" and Edit. */
+  trackCuts: TrackCutsBridge
   /** A save is in flight, or a move of marked clips is pending: the handles and fields change nothing. */
   locked: boolean
   /**

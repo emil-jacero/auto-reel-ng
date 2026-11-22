@@ -194,6 +194,7 @@
 
   .tl-clip-where,
   .tl-clip-status,
+  .tl-clip-cuts,
   .tl-clip-length {
     color: var(--fg-muted);
   }
@@ -207,6 +208,10 @@
 
   /* The poster control carries the Timeline toolbar's `grid-area: poster`: in this grid that name
      would add a column beside the trim fields and the cuts. */
+  .ct-tab > .tl-clip-cuts {
+    margin: 0;
+  }
+
   .ct-tab > .tl-poster {
     grid-area: auto;
   }

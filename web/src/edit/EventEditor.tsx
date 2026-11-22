@@ -20,7 +20,8 @@ import { fetchReel, saveReel } from '../api/reel'
 import type { ReelDocument, ReelReadResult, ReelSaveResult, ReelWriteBody } from '../api/reel'
 import type { CutHandlers } from '../cuts/CutsPanel'
 import { createCutPanels } from '../cuts/panelStore'
-import { keptCuts, trimmedWords } from '../cuts/times'
+import { CutsPanel } from '../cuts/CutsPanel'
+import { cutSummary, keptCuts, trimmedWords } from '../cuts/times'
 import { markEventsChanged } from '../events/changes'
 import { fileName, folderName, namesIn, plural } from '../events/common'
 import { FAILURE_LABEL, UNANSWERED_CAUSE, notReachableHint } from '../events/labels'
@@ -53,6 +54,7 @@ import { draftEventStyle, previewStyle, readStyle, styleRefusalOf } from './card
 import type { StyleField, StyleRefusal, StyleValue } from './cardStyle.ts'
 import type { EventStyle } from './card/specs.ts'
 import type { EditBinding, MenuBridge, MenuFacts, TrackBridge } from '../timeline/editing'
+import { createTrackCuts } from '../timeline/trackCuts'
 import { applyDrop, includeIndex } from '../timeline/reorder'
 import { MOVE_LOCKED } from '../timeline/clipDrag'
 import { focusAfterMany } from '../timeline/clipMenu'
@@ -83,6 +85,7 @@ import {
   nameDialogNote,
 } from './chapterNames'
 import { BinPlayer } from './BinPlayer'
+import { cuttable } from './binPlayer.ts'
 import { setBinPlayerShown } from './binPlayerPref.ts'
 import { ChapterList } from './ChapterList'
 import type { ChapterRowModel } from './ChapterList'
@@ -104,7 +107,6 @@ import { binRows } from './binList.ts'
 import { stepMove } from './stepMove.ts'
 import { NOTHING_INCLUDED, includedBy, selectionLabel, selectionStep } from './selectionEdit.ts'
 import type { SelectionEdit } from './selectionEdit.ts'
-import type { IncludeHandler } from './ClipOrderList'
 import {
   addChapter,
   addCut,
@@ -1743,6 +1745,8 @@ export function EventEditor({
   // in its row, which Move marked to… mounts anew in another chapter. Reset empties it, and
   // closes every clip preview (one open at a time, `preview/previews.ts`).
   const [cutPanels] = useState(createCutPanels)
+  // What the Timeline lends the Clip tab's Cuts panel while its track draws the clip.
+  const [trackCuts] = useState(createTrackCuts)
 
   // Each chapter's removed clips, in its original order; one shared empty list for the rest.
   const removals = ready?.draft.removed
@@ -2040,7 +2044,7 @@ export function EventEditor({
 
   // An ignored clip included without a drag: at the end of its chapter's play order, the same
   // draft edit as the track drop, with the same guard.
-  const onIncludeClip = useCallback<IncludeHandler>(
+  const onIncludeClip = useCallback<(chapter: ChapterKey, identity: string) => void>(
     (chapter, identity) => {
       const current = latest.current
       if (!idle(current)) {
@@ -2323,6 +2327,7 @@ export function EventEditor({
       overBin,
       trackAt,
       menuAt,
+      trackCuts,
       onPoster,
       onAdd: cutHandlers.onAdd,
       onRemove: cutHandlers.onRemove,
@@ -2360,6 +2365,7 @@ export function EventEditor({
     onRotateMany,
     onMoveSelection,
     overBin,
+    trackCuts,
     onPoster,
     rotateClip,
     cutHandlers,
@@ -3449,6 +3455,29 @@ export function EventEditor({
           return step.kind === 'edge' ? step.words : null
         }
         const ignoredIn = [...ignoredOf].find(([, identities]) => identities.includes(identity))?.[0]
+        // The Cuts panel, with or without the track, for a clip on disk that a chapter plays and
+        // `reel.yaml` does not exclude. A missing clip says how many cuts it has and is not cut (its
+        // file is not on disk); an ignored, removed or excluded clip shows none.
+        const draftCutsOf = cutsOf(baseline.cuts, draft.cuts, identity)
+        const cutsNode: ReactNode =
+          state === 'played' && cuttable(clip) ? (
+            <CutsPanel
+              // One panel per clip (its fields are local state), and a new one after Reset.
+              key={`${ready.resets}:${identity}`}
+              eventId={eventId}
+              identity={identity}
+              mtime={clip.mtime ?? null}
+              duration={clip.duration ?? null}
+              name={nameFor(identity)}
+              cuts={draftCutsOf}
+              locked={listsLocked}
+              panels={cutPanels.panels}
+              handlers={cutHandlers}
+              trackCuts={trackCuts}
+            />
+          ) : state === 'missing' && clip.excluded !== true && keptCuts(draftCutsOf).length > 0 ? (
+            <p className="tl-clip-cuts">Has {cutSummary(draftCutsOf)}</p>
+          ) : null
         clipTab = (
           <ClipInspector
             identity={identity}
@@ -3462,6 +3491,7 @@ export function EventEditor({
             edges={{ earlier: edge(-1), later: edge(1) }}
             onStep={(way) => onStepClip(identity, way)}
             onMoveTo={(to) => onMoveClipToEnd(identity, to)}
+            cuts={cutsNode}
             onEnd={() => {
               if (offers.action === 'ignore') {
                 editing.onIgnore(identity)
