@@ -5,6 +5,7 @@ import type { Clip, EventDetail } from '../api/event.ts'
 import type { ReelDocument } from '../api/reel.ts'
 import {
   addCut,
+  deleteChapter,
   draftChapters,
   editableChapters,
   ignoreClip,
@@ -193,6 +194,29 @@ describe('the order and the groups', () => {
     assert.equal(row(rows, 'Kvällen/s1710002.mp4').status, 'Ignored')
     // The two left in Kvällen close ranks.
     assert.equal(row(rows, 'Kvällen/s1710003.mp4').place, 'Kvällen · 1 of 2')
+  })
+
+  it('still lists a read-ignored clip whose chapter is deleted here', () => {
+    // Kvällen plays nothing but its ignored clip, so it can be deleted.
+    const fixture = setup(
+      [
+        { name: '', clips: ['a.mp4'] },
+        { name: 'Kvällen', clips: ['Kvällen/ig.mp4'] },
+      ],
+      ['Kvällen/ig.mp4'],
+    )
+    const kvallen = fixture.draft.chapters.find((chapter) => chapter.name === 'Kvällen')
+    assert.ok(kvallen)
+    const deleted = deleteChapter(fixture.draft, kvallen.key)
+    assert.ok(deleted.chapters.some((chapter) => chapter.deleted))
+    const rows = rowsOf(fixture, deleted)
+    assert.deepEqual(
+      rows.map((r) => [r.identity, r.group, r.status]),
+      [
+        ['a.mp4', 'listed', 'Included'],
+        ['Kvällen/ig.mp4', 'ignored', 'Ignored'],
+      ],
+    )
   })
 
   it('shows an ignored clip included here as played, at the end of its chapter, and not as moved', () => {
