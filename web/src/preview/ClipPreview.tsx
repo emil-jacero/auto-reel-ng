@@ -55,6 +55,7 @@ import {
   seekKey,
   setName,
   skipAt,
+  skipLookahead,
   skipName,
   skipSpans,
   timeCells,
@@ -598,6 +599,8 @@ export const ClipPreview = memo(function ClipPreview({
     // just before a cut would present the cut's first frame next, so the loop looks two
     // intervals ahead: at most one kept frame before a cut goes unshown, never a cut frame.
     let interval = Infinity
+    // The widest step between two callbacks since the last seek (see skipLookahead).
+    let widest = 0
     // The last target sought: never sought again before playback leaves it, so a
     // frame that straddles a cut's end cannot stall playback.
     let sought: number | null = null
@@ -607,6 +610,7 @@ export const ClipPreview = memo(function ClipPreview({
       if (last !== null && at > last) {
         step = at - last
         interval = Math.min(interval, step)
+        widest = Math.max(widest, step)
       }
       last = at
       setAtMs(at)
@@ -617,7 +621,7 @@ export const ClipPreview = memo(function ClipPreview({
       const { skip: skipping, spans: skips, lengthMs: total } = loop.current
       const action =
         skipping && total !== null
-          ? skipAt(skips, at, step === 0 ? 0 : Math.max(step, 2 * interval), total)
+          ? skipAt(skips, at, skipLookahead(step, interval, widest), total)
           : null
       if (action !== null && 'stop' in action) {
         video.pause()
@@ -636,6 +640,7 @@ export const ClipPreview = memo(function ClipPreview({
     // frame step, so the last one is kept.
     const onSeeking = () => {
       last = null
+      widest = 0
     }
     video.addEventListener('seeking', onSeeking)
     handle = video.requestVideoFrameCallback(tick)

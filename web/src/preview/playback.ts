@@ -75,6 +75,26 @@ export function skipAt(
   return toEnd(span, lengthMs) ? { stop: span.from } : { seek: span.to }
 }
 
+/** The largest gap, in frame intervals, the loop reckons with between two frame callbacks. */
+const WIDEST_GAP_FRAMES = 4
+
+/**
+ * How far ahead of the shown frame the frame loop looks for a cut: `stepMs` (the last
+ * step between callbacks), at least two frame intervals, and at least the widest step
+ * seen since the last seek plus one interval. A browser that calls back only about every
+ * second frame, and sometimes off its cycle, can leave a longer gap before the cut's
+ * first frame than the last step shows; the loop must seek one callback earlier then.
+ * The widest step counts up to `WIDEST_GAP_FRAMES` intervals, so one stall cannot cost
+ * much kept footage. Zero while no step is known (`stepMs` 0).
+ */
+export function skipLookahead(stepMs: number, intervalMs: number, widestMs: number): number {
+  if (stepMs === 0) {
+    return 0
+  }
+  const widest = Math.min(widestMs, WIDEST_GAP_FRAMES * intervalMs) + intervalMs
+  return Math.max(stepMs, 2 * intervalMs, widest)
+}
+
 /** The clip's first footage outside every span, or null when the spans cover it all. */
 function firstFootage(spans: readonly Skip[], lengthMs: number): number | null {
   const first = spans[0]
