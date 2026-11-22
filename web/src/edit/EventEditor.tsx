@@ -2088,7 +2088,7 @@ export function EventEditor({
         return true
       }
       const { baseline, draft } = current
-      const name = identity.slice(identity.lastIndexOf('/') + 1)
+      const name = nameNow(draft, baseline.original, identity, ignoredOf, removedByChapter)
       if ([...draft.orders.values()].some((order) => order.includes(identity))) {
         // Played already (a NEW clip, say): a move, which a missing clip never makes.
         if (onDisk(clips.get(identity))) {
@@ -2104,7 +2104,7 @@ export function EventEditor({
       announce(`Included ${name}. ${slot.words}. Not saved.`)
       return true
     },
-    [announce, clips, onMoveClip],
+    [announce, clips, onMoveClip, ignoredOf, removedByChapter],
   )
 
   // What the Timeline gets of the draft (`timeline/editing.ts`); null for the needs-attention form.
