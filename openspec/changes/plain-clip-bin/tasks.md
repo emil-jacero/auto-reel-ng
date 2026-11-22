@@ -51,6 +51,10 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
   words. Remove `@dnd-kit` if nothing imports it, and update the dependency test. Verify with `npm test`, `npm run
   check` and `npm run build`, and report the bundle's change in kB. `grep -rn "Move marked\|Clear marks" web/src`
   must find nothing.
+  Also sweep what the old bin left: the `.clip-item`, `.clip-order` and `.cuts-toggle` rules in `edit.css` (and the
+  `listPaint.test.ts` checks of them), `cuts/times.ts`'s `toggleName`, and the comments that still cite `ChapterDrag` or
+  `ClipOrderList` (`EventEditor.tsx`, `clipLength.ts`, `drag.css`, `edit.css`, `emptyChapter.ts`, `ChapterTools.tsx`,
+  `layout.ts`, `workspace.css`).
 
 ## 3. Verification and record
 
