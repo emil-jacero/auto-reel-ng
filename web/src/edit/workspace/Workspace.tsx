@@ -29,6 +29,7 @@ export function Workspace({
   top,
   player,
   bin,
+  info,
   event,
   clip,
   clipSlot,
@@ -41,6 +42,8 @@ export function Workspace({
   /** The bin's player (`BinPlayer`): above the bin's scroll box, so it never scrolls away. */
   player: ReactNode
   bin: ReactNode
+  /** The bin's information (`ClipInfo`): under the bin's scroll box, capped at 30 % of the bin's height. */
+  info: ReactNode
   /** The inspector's Event tab. */
   event: ReactNode
   /**
@@ -179,6 +182,7 @@ export function Workspace({
           <div className="ws-pane ws-bin" data-ws-scroll>
             {bin}
           </div>
+          {info}
         </section>
         <section className="ws-pane ws-view" aria-label="Viewer">
           <div className="ws-view-empty">{viewer}</div>

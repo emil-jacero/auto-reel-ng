@@ -1,0 +1,103 @@
+/*
+ * The clip bin's information (`ClipInfo.tsx`, `plain-clip-bin` D3): a column under the bin's scroll
+ * box. Its heading and toggle stay; its body is capped at 30 % of the bin's height (a fixed
+ * height where the page stacks, which has none to take a share of) and scrolls inside itself, so
+ * the list keeps the rest. Tokens only, no motion.
+ */
+@layer screens {
+  .bin-info {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    max-block-size: 16rem;
+    border-block-start: 1px solid var(--border);
+    background: var(--surface);
+    font-size: var(--text-sm);
+  }
+
+  @media (width >= 960px) {
+    .bin-info {
+      max-block-size: 30%;
+    }
+  }
+
+  .bin-info-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+    min-block-size: 2rem;
+    padding: var(--s-1) var(--s-2) var(--s-1) var(--s-3);
+  }
+
+  .bin-info-title {
+    display: flex;
+    gap: var(--s-2);
+    min-inline-size: 0;
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+
+    & > .bin-info-clip {
+      min-inline-size: 0;
+      overflow: hidden;
+      color: var(--fg-muted);
+      font-family: var(--font-mono);
+      font-weight: 400;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .bin-info-toggle {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .bin-info-body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0 var(--s-3) var(--s-2);
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  .bin-info-empty {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+
+  .bin-info-list {
+    display: grid;
+    gap: var(--s-1);
+    margin: 0;
+    padding-block: var(--s-1);
+
+    & + & {
+      border-block-start: 1px solid var(--border);
+    }
+  }
+
+  .bin-info-line {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    column-gap: var(--s-2);
+
+    & > dt {
+      color: var(--fg-muted);
+    }
+
+    & > dd {
+      margin: 0;
+      min-inline-size: 0;
+      overflow-wrap: anywhere;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
