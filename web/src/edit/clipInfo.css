@@ -14,16 +14,6 @@
     border-block-start: 1px solid var(--border);
     background: var(--surface);
     font-size: var(--text-sm);
-    container-type: inline-size;
-  }
-
-  /* A narrow bin (about 1100 px wide windows) has no room for the clip's name beside "Information"
-     and Hide information: it would shrink to a clipped fragment, so the name goes (the row and the
-     Clip tab name the clip). */
-  @container (width < 18rem) {
-    .bin-info-title > .bin-info-clip {
-      display: none;
-    }
   }
 
   @media (width >= 960px) {
@@ -42,22 +32,23 @@
     padding: var(--s-1) var(--s-2) var(--s-1) var(--s-3);
   }
 
+  /* The clip's name stays: beside "Information" when it fits, else on a line of its own, wrapped
+     where it must (a path has no spaces), so the panel always names the clip it describes. */
   .bin-info-title {
     display: flex;
-    gap: var(--s-2);
+    flex-wrap: wrap;
+    column-gap: var(--s-2);
     min-inline-size: 0;
     margin: 0;
     font-size: var(--text-sm);
     font-weight: 600;
-    white-space: nowrap;
 
     & > .bin-info-clip {
       min-inline-size: 0;
-      overflow: hidden;
       color: var(--fg-muted);
       font-family: var(--font-mono);
       font-weight: 400;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
     }
   }
 
