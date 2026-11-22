@@ -71,6 +71,8 @@ All work is in `web/`, plus the HLD and `docs/editor-workspace.md`.
     earlier, Move later and Move to…. Remove the marks from D-28's text, and note what the information shows and
     why there is no source resolution.
   - §6 item 10: the plain clip list is built.
+  - The HLD's dependency section (the "dependency budget" paragraph): `@dnd-kit` left with `plain-clip-bin`, and the
+    note that `@dnd-kit/react` will replace it is dropped.
   - `docs/editor-workspace.md`: rewrite rows 1.3 and 3.1–3.3 to the plain list and the information, and add a row for
     `plain-clip-bin`.
 - [ ] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman; `openspec validate plain-clip-bin
