@@ -20,7 +20,7 @@ import {
   withLeadSample,
 } from './lead'
 import type { Calibration, FrameSample } from './lead'
-import { atBoundary, IDLE, standbyAim, standbyStep, standbyTarget } from './standby'
+import { atBoundary, atPlay, IDLE, standbyAim, standbyStep, standbyTarget } from './standby'
 import type { Standby, Target } from './standby'
 import { NOT_STARTED, playbackNote } from './labels'
 import type { Notice, PlaybackNote } from './labels'
@@ -114,7 +114,7 @@ type FrameVideo = HTMLVideoElement & {
 }
 
 type Slot = 0 | 1
-type Source = 'timer' | 'frame' | 'ended' | 'seeked'
+type Source = 'timer' | 'frame' | 'ended' | 'seeked' | 'play'
 
 /**
  * One early start of the standby, from its `play()` to the samples taken of it: the lead's
@@ -1393,10 +1393,22 @@ export function useTimelineVideo({
     wantPlay.current = true
     operatorStart.current = true
     setPlaying(true)
+    if (!coalescer.busy() && !windowOpen(leadRun.current)) {
+      // In the end slack of a clip, Play goes on at the next clip: the standby holds it already.
+      const verdict = atPlay(standby.current, at, start, addressOf(start.clip))
+      if (verdict === 'hand-over') {
+        handOver(start, 'play')
+        return
+      }
+      if (verdict === 'wait') {
+        holdForStandby(start)
+        return
+      }
+    }
     afterSettle.current = true
     playhead.set(start)
     moveVideo(start)
-  }, [enterCard, moveVideo, playhead])
+  }, [addressOf, coalescer, enterCard, handOver, holdForStandby, moveVideo, playhead])
 
   const toggle = useCallback(() => {
     if (wantPlay.current) {

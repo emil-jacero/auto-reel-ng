@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { atBoundary, IDLE, standbyAim, standbyStep, standbyTarget } from './standby.ts'
+import { atBoundary, atPlay, IDLE, standbyAim, standbyStep, standbyTarget } from './standby.ts'
 import type { Standby, Target } from './standby.ts'
 
 const plain = { durationMs: 10_000, spans: [] }
@@ -179,5 +179,26 @@ describe('atBoundary', () => {
       assert.equal(atBoundary(s, { clip: 1, ms: 40 }, A), 'load')
       assert.equal(atBoundary(s, T1, '/other'), 'load')
     }
+  })
+})
+
+describe('atPlay', () => {
+  it('hands over to a ready standby that holds the start in the next clip', () => {
+    assert.equal(atPlay(ready, { clip: 0 }, T1, A), 'hand-over')
+  })
+
+  it('waits for a standby still on its way', () => {
+    assert.equal(atPlay(seeking, { clip: 0 }, T1, A), 'wait')
+    assert.equal(atPlay(loading, { clip: 0 }, T1, A), 'wait')
+  })
+
+  it('loads when the standby holds another target or address, or is idle', () => {
+    assert.equal(atPlay(ready, { clip: 0 }, { clip: 1, ms: 500 }, A), 'load')
+    assert.equal(atPlay(ready, { clip: 0 }, T1, '/other'), 'load')
+    assert.equal(atPlay(IDLE, { clip: 0 }, T1, A), 'load')
+  })
+
+  it('loads when Play starts in the same clip, whatever the standby holds', () => {
+    assert.equal(atPlay(ready, { clip: 1 }, T1, A), 'load')
   })
 })
