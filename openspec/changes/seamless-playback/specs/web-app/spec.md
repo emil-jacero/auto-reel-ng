@@ -11,8 +11,9 @@ one place, and not a rule per pair of players: a player added to the page SHALL 
 in it. Neither video SHALL be closed, replaced, restarted or seeked by it, no word SHALL be announced for it, and
 pausing SHALL be the only thing the page does: the video that was paused SHALL stay available and play on from its
 position when its own Play is pressed. A video that Skip cuts seeks, that plays on after a seek or after a change of
-its file at a clip boundary, or the Timeline's standby that takes over from its shown video at a clip boundary, SHALL
-NOT count as starting, and a paused standby SHALL NOT count as playing. A video that is paused or ended SHALL NOT be touched.
+its file at a clip boundary, or the Timeline's standby that is started shortly before a clip boundary and takes over from its shown video there,
+SHALL NOT count as starting; a paused standby SHALL NOT count as playing, and a standby started in the lead is the
+Timeline's own play, so the shown video is not paused for it. A video that is paused or ended SHALL NOT be touched.
 
 #### Scenario: A clip started while the movie plays
 - **WHEN** the Movie section's player plays at `1:12` and the operator presses Play in the open player of
@@ -53,6 +54,6 @@ NOT count as starting, and a paused standby SHALL NOT count as playing. A video 
 
 #### Scenario: The Timeline's hand-over is not a start
 - **WHEN** in Edit mode the Timeline plays across the boundary from `s1710001.mp4` into `s1710002.mp4`, its standby
-  taking over
+  starting shortly before the boundary and taking over
 - **THEN** the Timeline still plays and its button says "Pause", no other video of the page is paused, and nothing is
   announced
