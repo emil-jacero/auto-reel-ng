@@ -35,6 +35,11 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 - **THEN** the Timeline is paused on `s1710001.mp4`, the standby is paused and back at its first kept frame, no frame
   of `s1710002.mp4` was shown, and Play then crosses the boundary as before
 
+#### Scenario: Play again while the standby is returning
+- **WHEN** the operator pauses during the lead and presses Play again before the standby has finished seeking back
+- **THEN** the boundary does not hand over to the standby until its seek has landed, and no frame of the wrong
+  position is shown
+
 #### Scenario: Into a leading cut
 - **WHEN** the clip after the playing one has a cut from 0 to 1.50 s
 - **THEN** the first frame of it on screen is its frame at 1.50 s, no frame inside the cut is shown, and the boundary
@@ -69,7 +74,7 @@ Timeline SHALL release it.
 - **WHEN** Edit mode opens on an event and the operator moves the playhead without pressing Play
 - **THEN** only the proxies of the clips the playhead was put in are requested, and no standby loads
 
-#### Scenario: The standby is neither seen nor heard
+#### Scenario: The standby is not seen, and heard only in the lead
 - **WHEN** the Timeline plays `s1710001.mp4` with `s1710002.mp4` loaded in its standby
 - **THEN** the standby is muted, fully transparent, hidden from assistive technology and not focusable, and a
   screenshot of the stage shows only `s1710001.mp4`'s frame; and in the last lead before the boundary the standby
