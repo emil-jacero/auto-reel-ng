@@ -32,7 +32,7 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 #### Scenario: Pause during the lead
 - **WHEN** the Timeline plays the last 0.2 s of `s1710001.mp4` with `s1710002.mp4` in its standby and the operator
   presses Pause just after the standby has started
-- **THEN** the Timeline is paused on `s1710001.mp4`, the standby is paused and back at its first kept frame, no frame
+- **THEN** the Timeline is paused on `s1710001.mp4`, the standby is paused at its pre-sought position (its first kept frame less the pre-roll), no frame
   of `s1710002.mp4` was shown, and Play then crosses the boundary as before
 
 #### Scenario: Play again while the standby is returning
@@ -67,7 +67,7 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 The Timeline SHALL load a standby `<video>` only while it plays, with the clip play goes on into. The standby SHALL be
 invisible, hidden from assistive technology and out of the Tab order, and muted and not counted as playing until its
 early start; from then until it takes over it plays unmuted as the Timeline's own play. A pause, scrub, seek, Previous
-or Next clip, yield or reload SHALL put a started standby back at its first kept frame. A preview and closing the
+or Next clip, yield or reload SHALL put a started standby back at its pre-sought position (its first kept frame less the pre-roll). A preview and closing the
 Timeline SHALL release it.
 
 #### Scenario: Nothing loads ahead while paused

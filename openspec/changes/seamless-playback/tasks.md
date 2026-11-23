@@ -42,6 +42,12 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - the target after a plain clip, after a clip with a leading cut (the cut's end), over a clip cut whole, before a
     black-card gap (null), and at the last clip (null);
   - every transition, including an error and a re-target while loading;
+  - `lead.test.ts`: the P law is closed-loop (`needed = max(0, P_used + error)`, negative errors included, median of
+    9, clamped [0, 40] and to IN). Cases: a fixed Chrome-like series (P stays 0); a **closed-loop Firefox simulation**
+    where the browser's skip is `28 - P_applied`: P converges to about 28 and stays within one frame of it over 20 or
+    more hand-overs; an **overshoot** case (P starts above the need) where P comes back down; IN = 0 gives no sample.
+  - the wait path: `started` is sent by the wait path's `play()` too; `cancelled` during it, then `atBoundary`
+    answers `wait` until `seeked`.
   - the lead: `started` from `ready` only (and `playAt` kept), `cancelled` to `seeking` and then `ready` on `seeked`,
     both ignored in other states, and `atBoundary` `wait` on a cancelled standby that is still seeking;
   - `hand-over`, `wait` and `load` for a ready, loading or other-target standby.
@@ -81,7 +87,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     `onFrame` and `ended` as backstops), and swap one frame interval later; seek the standby to the first kept frame
     less P; sample LEAD and P at every hand-over and reset them on `devicechange`;
   - cancel during the lead (pause, scrub, seek, Previous/Next clip, a yield, an event reload): the standby pauses,
-    is sought back to its first kept frame, and is `seeking` until that lands (a second Play meanwhile takes `wait`);
+    is sought back to its pre-sought position (first kept frame less P), and is `seeking` until that lands (a second Play meanwhile takes `wait`);
     the shown slot stays;
   - `advance()` follows `atBoundary`, with `wait` and `load` as fallbacks;
   - each slot gets its own handlers, and the coalescer is bound to the shown slot;
@@ -93,7 +99,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - a leading cut, and a clip cut whole;
   - a slowed proxy, by delaying one clip's route: the last frame is held and nothing is blank;
   - a reorder during play;
-  - a pause, and a scrub, during the lead: the shown clip stays, the standby is back at its first kept frame, and a
+  - a pause, and a scrub, during the lead: the shown clip stays, the standby is paused at or before its first kept frame (back at its pre-sought position), and a
     Play pressed while it is still seeking does not hand over until `seeked`.
 
   Also log how often the `ended` backstop is what triggers the hand-over.

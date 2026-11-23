@@ -84,7 +84,7 @@ export function atBoundary(s: Standby, want: Target, address: string): 'hand-ove
   (`playAt`), the sample the lead calibrator needs (D4). Any other state ignores it, so a start can never happen on
   a standby that is still seeking.
 - **Cancelled.** `cancelled` is valid from `started` and leads to `seeking`, never to `ready`: the hook has paused T
-  and set `currentTime` back to the first kept frame, and only that seek's `seeked` (with `readyState >= 2`) leads to
+  and set `currentTime` back to its pre-sought position (first kept frame less P), and only that seek's `seeked` (with `readyState >= 2`) leads to
   `ready`. Until then `atBoundary` answers `wait`, so a second Play, or the next arming, cannot hand over to an
   element that is seeking. `cancelled` from any other state is ignored.
 - **`atBoundary`.** `hand-over` for `ready` and `started` holding `want` at the same address; `wait` for `loading`
@@ -121,9 +121,13 @@ already running when S's last kept frame has had its time.
   - **P**, the pre-roll, learned from the **signed alignment error** of the incoming clip: its position on its own
     frame clock (callback time minus `mediaTime`, median over its first presented frames) at the swap, against the
     position it should have (the first kept frame plus the real time since the decision). Positive is T ahead (content
-    skipped). P is the running median (last 9) of the positive errors, clamped to [0, 40] ms (two frames), 0 before
-    the first hand-over, and never more than the incoming clip's in-point (IN = 0 has no frames before it, so P is 0
-    there). A negative error (content lost) does not change P; it shows in LEAD's next samples.
+    skipped). The error is measured with the P that was applied (`P_used`), so the loop is closed and the sample is the
+    **pre-roll that was needed**: `needed = max(0, P_used + error)`, taken for every hand-over where P could be
+    applied, **including a negative error** (an overshoot gives a smaller `needed`). P is the running median (last 9)
+    of `needed`, clamped to [0, 40] ms (two frames), 0 before the first hand-over, and never more than the incoming
+    clip's in-point (IN = 0 has no frames before it, so P is 0 there, and a hand-over with IN = 0 gives no sample).
+    Firefox (skip 28 ms at P = 0): the first sample is 28, then aligned hand-overs at P = 28 give `needed` near 28,
+    so P stays near 28 and does not fall back to 0; an overshoot (P too large, error negative) lowers `needed` and so P.
   - Both reset (LEAD 40 ms, P 0) on `navigator.mediaDevices` `devicechange`.
   - **Why two numbers.** A single LEAD fed with `play()` to first frame cannot align Firefox. Its clock starts at
     `play()` and its frames arrive late, so P = 0 runs 26 to 30 ms ahead whatever LEAD is (`early-24-0`, `early-20-0`:
@@ -149,11 +153,13 @@ already running when S's last kept frame has had its time.
   kept frame, T loses `data-standby`, S gains it and is muted, and the swap listeners run (D6). The calibrator takes
   its LEAD and P samples here. Then S loads `standbyTarget(…, want.clip)`, and `arm()` follows T.
 - **Cancel during the lead.** Between the start and the swap, a pause, a scrub, a seek, Previous/Next clip, a yield
-  (D5) or an event reload pauses T, sets its `currentTime` back to the first kept frame (less P), and sends
+  (D5) or an event reload pauses T, sets its `currentTime` back to its pre-sought position (the first kept frame less P), and sends
   `cancelled` (D2). The standby is `seeking` until that seek lands, and `atBoundary` answers `wait` meanwhile. S
   stays shown, and the Timeline goes on as that action says. A cancelled start gives no calibrator sample.
 - **`wait`:** S is paused (its own pause) and holds its last frame, and a flag like `handOverWait` is set. The
-  standby's `seeked` runs the hand-over: `T.play()` now, and the swap on T's first presented frame at or past its
+  standby's `seeked` runs the hand-over: `T.play()` now, **sending `{type:'started', playAt}` as for the early start**
+  (valid from `ready`, after `seeked`), so a pause or scrub between that `play()` and the swap sends `cancelled` from
+  `started` (to `seeking`, `atBoundary` `wait` until its `seeked`), and the swap on T's first presented frame at or past its
   first kept frame, not one frame after the decision (that has passed, and would show T's still frame for the whole
   play start-up, 66 to 150 ms in Chrome). This path is a fallback and does not have to meet the gate; it must show
   no blank frame and no frame of the wrong clip.
@@ -282,10 +288,19 @@ adopted; this amendment, with its P calibration, is for the operator to confirm 
   - **Firefox passes only with P = 20, L = 20** (`early-20-20`: -5 ms, hold p90 52 ms against 60). That is one frame
     of pre-roll, so it is a point of B+, not of B. It sits at Firefox's 40 ms frame-report resolution, so it is the
     least certain result, and it is why both numbers are measured per session.
+- **Firefox's convergence point has no measured pass.** With P learned, Firefox settles near LEAD about 24 ms and P
+  about 20 to 28 ms. That is `early-24-24`, and `early-40-40` is the same family: both aligned but **failed hold**
+  (`early-24-24` p90 74.6 ms, max 85.6 ms against the 60 ms gate). The only Firefox pass, `early-20-20`, has `play()`
+  on the last kept frame (L = one frame interval, not LEAD). So B+ as written (`startAt` = kept end minus LEAD) is
+  **not measured to pass in Firefox**; task 3.1 decides it. **Two options for the operator before task 1.1:**
+  (a) in Firefox, when P > 0, set `startAt` to `decideAt` (the `early-20-20` recipe: L = one frame, T starts on S's
+  last kept frame), chosen by the calibrator: it uses L = one frame interval whenever P > 0 and LEAD otherwise, so
+  Chrome (P = 0) keeps the measured `early-66-0`; (b) ship B+ as written and let 3.1 decide, with (a) as the fallback
+  if hold fails.
 - **Why a calibrated P and not LEAD alone.** LEAD is `play()` to first presented frame (about 24 ms in Firefox).
   Feeding that back as LEAD reproduces `early-24-0`, which §6.7 marks "no (28 ms ahead)": Firefox starts its clock at
   `play()` and presents frames late, so the error is not the latency. Calibrating on the alignment error, with P as
-  the second number, is what can move Firefox from -28 ms to about 0.
+  the second number, moves Firefox's alignment from -28 ms to about 0; it does not by itself pass the hold gate there (see above).
 - **What is accepted.** The gate's floor is -40 ms (D7). Where P cannot be applied (the incoming clip's first kept
   frame is its frame 0, so IN = 0, or P has not converged on the first hand-overs), up to about 28 ms of the incoming
   clip is skipped in Firefox, within the floor and silent. This is a known limit, and 3.1 records it per browser
