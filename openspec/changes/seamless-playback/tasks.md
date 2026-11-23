@@ -72,7 +72,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
 
 ## 2. Wiring (web/src/timeline)
 
-- [ ] 2.1 Render two slots in the stage (design D1):
+- [x] 2.1 Render two slots in the stage (design D1):
   - CSS: both positioned in the 16:9 box, the standby at `opacity: 0`;
   - attributes: `data-player` on the stage around both slots (one player for `samePlayer`), `data-standby` and `muted` on the standby, `aria-hidden` and `tabIndex=-1` on both, a turn per
     slot;

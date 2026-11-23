@@ -91,6 +91,21 @@
     object-fit: contain;
   }
 
+  /* Two slots in one stage (`seamless-playback` D1): both fill the 16:9 box; the standby is
+   * rendered and never seen. Opacity, not visibility, so a turned or letterboxed shown clip
+   * never lets it show around it, and the card layer (later in the DOM) stays on top.
+   * `:where` keeps this fill at the lowest specificity, so a quarter turn's own box and place
+   * (`rotate.css`, `[data-turned] > [data-turn]`) win over `inset: 0` whatever the source order. */
+  :where(.tl-stage) > .tl-video {
+    position: absolute;
+    inset: 0;
+  }
+
+  .tl-stage > .tl-video[data-standby] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
   /* --- transport, readout and zoom ---
    * A grid of fixed slots (`timeline-zoom-slider`): no state (seeking, a frame loading, playing,
    * the playhead in a card, Use as poster unable to act) adds text to it or moves a control.
