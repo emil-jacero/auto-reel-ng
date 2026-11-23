@@ -1630,7 +1630,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     §6.10), **accepted by the operator on 2026-11-23** after watching the build in Firefox ("not that bad actually")
     though it misses the first gate: IN = 0 in Firefox, lost p90 7.0 ms, hold p50 / p90 / max 51 / 83 / 134 ms (the first
     gate allowed 70 / 100), p10 lost -41.5 ms (floor -40); Chrome meets every term of the first gate. Against the
-    single element of the same session (Firefox lost about 220 ms, hold p90 about 251 ms) lost p90 is under half in
+    single element of the same session (§6.10, Firefox lost p90 275.1 ms, hold p90 255.5 ms) lost p90 is under half in
     both browsers and hold p90 under half in Firefox (Chrome 50.1 against 83.4 ms). **Known limitations:** leading-cut
     boundaries fail the first gate in both browsers (Firefox lost p90 29.8, hold p90 117; Chrome 20.5 and 83.5), and the
     learned P correlates with the worse holds (follow-up: drop P); the first presented frame of the incoming clip is 2 to

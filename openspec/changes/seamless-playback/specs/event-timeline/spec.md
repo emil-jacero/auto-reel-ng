@@ -26,8 +26,9 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
   time minus media time), not from `currentTime`.
   - **Plain boundaries into a clip's start (IN = 0), per browser:** the play time lost at a boundary is at most one
     frame interval (20 ms) at the 90th percentile; the hold at the 90th percentile is at most the median of the steady
-    play's longest hold plus two frame intervals of the browser's reported cadence (at most 90 ms in Firefox, which
-    reports every other frame of a 50 fps proxy; 100 ms in Chrome at 33.5 ms); no boundary holds a frame longer than
+    play's longest hold plus 40 ms in Firefox (two intervals of the 20 ms proxy frame; 90 ms at a steady median of
+    50 ms) and plus 67 ms in Chrome (two intervals of its reported 33.5 ms cadence; 100 ms at a steady median of
+    33.5 ms); no boundary holds a frame longer than
     150 ms or skips more than 60 ms of the incoming clip.
   - **Relative to the single-element hand-over** (the same script, run in the same session against the hand-over this
     change replaces): lost at the 90th percentile is at most half of the single element's, in both browsers. Hold at
@@ -35,8 +36,9 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
     (50.1 against 83.4 ms), so the Chrome hold is met by the absolute bound above only.
   - **Leading-cut boundaries (the incoming clip entered at IN above 0), a known limitation:** lost at the 90th
     percentile is at most half of the single element's in both browsers (Firefox 29.8 against 237.2 ms, Chrome 20.5
-    against 153.8 ms), and the absolute bounds above are not met (Firefox hold p90 117 ms and max 134 ms; Chrome hold
-    p90 83.5 ms, max 116.7 ms, lost p90 20.5 ms). The hold at the 90th percentile is below the single element's in
+    against 153.8 ms), and the absolute bounds above are not all met: lost p90 is over 20 ms in both browsers (Firefox 29.8 ms,
+    Chrome 20.5 ms) and Firefox hold p90 117 ms is over 90 ms (the other terms are met: Firefox max 134 ms, Chrome hold
+    p90 83.5 ms and max 116.7 ms). All of these figures fail the first gate (70 / 54 / 100). The hold at the 90th percentile is below the single element's in
     Firefox (117 against 226.8 ms) and equal to it in Chrome (83.5 ms). No bound is claimed for them.
   - **Not claimed:** a floor on negative lost time. The incoming clip's start is skipped by up to about two frames
     (p10 lost -41.5 ms in Firefox, -39.4 ms in Chrome, IN = 0).
