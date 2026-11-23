@@ -175,12 +175,17 @@ already running when S's last kept frame has had its time.
 - **A paused standby counts for nothing.** It never counts as playing. The standby may play for up to LEAD ms while S
   still plays; both slots playing at once is the Timeline's own, so it is not "another".
 - **The hand-over is not another start.** Its `play` event is the Timeline's own, so `watchOtherStarts` ignores it.
-  The page's capturing listener may call `pauseOthers(T, …)`, which must not pause S during the lead (S is an own
-  slot). When another player plays, the hand-over has already yielded (D4), and a yield during the lead pauses T and
+  The page's capturing listener calls `pauseOthers(T, …)`, which must not pause S during the lead (S is an own
+  slot): see the next bullet. When another player plays, the hand-over has already yielded (D4), and a yield during the lead pauses T and
   seeks it back (D4, cancel).
-- **`keepOneVideoPlaying` is unchanged.**
+- **One rule, one place: `samePlayer`.** `VideoRoot` gains `samePlayer(a, b)` (in `documentRoot`: both have the same
+  closest `[data-player]` ancestor, which the Timeline's stage carries around its two slots). `pauseOthers(started,
+  videos, samePlayer?)` skips videos of the started one's player, and `keepOneVideoPlaying` passes it, so T starting
+  in the lead leaves S playing while any other video is paused. A video of a different player is paused as before
+  (both slots with it). A video with no `[data-player]` ancestor is its own player.
 - **Tests.** `coordinator.test.ts` gains: a paused standby is not "another"; both own slots playing during the lead
-  is not "another"; the own slot's start does not call `onOther`; a third video does.
+  is not "another"; the own slot's start does not call `onOther`; a third video does; T starting in the lead leaves S
+  playing and pauses a third video; a different player's start pauses both slots.
 
 ### D6. The shown slot for its readers
 The hook returns `shown(): HTMLVideoElement | null` and `onSwap(listener): () => void` in place of `videoRef`. The

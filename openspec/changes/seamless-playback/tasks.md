@@ -54,8 +54,9 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
 
   `lead.test.ts` must cover:
   - the calibrator: LEAD is 40 ms before any sample, the median of the last 9 (older ones dropped), clamped to
-    [0, 250] ms (a negative and a huge sample); P is 0 before any sample, the median of the positive alignment
-    errors, clamped to [0, 40] ms and to the incoming in-point (0 at IN = 0), unchanged by a negative error; the
+    [0, 250] ms (a negative and a huge sample); P is 0 before any sample, the closed loop of D4
+    (needed = max(0, P_used + error), negative errors included; at P_used = 0 a negative error samples 0), clamped to
+    [0, 40] ms and to the incoming in-point (0 at IN = 0); the
     reset of both on `devicechange`; a Chrome-like series (errors near 0) keeps P at 0, a Firefox-like one (about
     +28 ms) raises it;
   - the timing helper: given a frame clock (callback time minus media time, as a median over the last second), S's
@@ -66,13 +67,14 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - a paused second element of the same player is not "another", and neither is a second own element that plays
     while the first plays (the lead);
   - the player's own start does not call `onOther`, and a third video's does;
-  - `keepOneVideoPlaying` is unchanged.
+  - `VideoRoot.samePlayer` and `pauseOthers(started, videos, samePlayer?)`: `keepOneVideoPlaying` leaves a started
+    video's own-player videos playing and still pauses any other (D5); the Timeline's stage carries `data-player` (2.1).
 
 ## 2. Wiring (web/src/timeline)
 
 - [ ] 2.1 Render two slots in the stage (design D1):
   - CSS: both positioned in the 16:9 box, the standby at `opacity: 0`;
-  - attributes: `data-standby` and `muted` on the standby, `aria-hidden` and `tabIndex=-1` on both, a turn per
+  - attributes: `data-player` on the stage around both slots (one player for `samePlayer`), `data-standby` and `muted` on the standby, `aria-hidden` and `tabIndex=-1` on both, a turn per
     slot;
   - `held` renders neither.
 
