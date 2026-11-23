@@ -525,7 +525,7 @@ nothing of lost time or hold.
 ### 6.9 Built (task 3.1, 2026-11-23)
 
 Everything here was run on the built code (`feat/seamless-playback` at `f6e9c834`) against `2024-06-27 - Grillning med
-grannar` (four 6.02 s, 50 fps proxies). **The boundary gate of D7 fails in both browsers.** Details below; nothing was
+grannar` (four 6.02 s, 50 fps proxies). **The boundary gate of D7 fails in both browsers, "A plain boundary" fails its first-frame clause and "Pause during the lead" its last clause.** Details below; nothing was
 tuned and no definition was changed after the first headed run. (The task asked for a subsection "§6.8 Built"; §6.8
 already holds the task 2.2 functional run, so this one is §6.9.)
 
@@ -654,14 +654,14 @@ ms). The single-element comparison therefore rests on 12 (Firefox) and 6 (Chrome
   first clip's end: the readout box has one width and one left edge, every text from the first clip's `Clip 0:04.00 of
   0:06.02 Event 0:11.00 of 0:31.08` into the second's, and the slider's value text names clip and event. **The event is not
   the one the spec scenario names** (clips of 9.00, 40.00 and 6.02 s, event 55.02): the library has none; this event's
-  clips are 6.02 s each (event 31.08). Chrome here is 158, not 154.
+  clips are 6.02 s each (event 31.08). Chrome here is 158 (the spec floor is 157).
 
 #### Functional run in Playwright, Firefox and Chromium, every scenario
 
 Headless, muted, writes intercepted. **Pass in both browsers** unless stated:
 
 - **`event-timeline`, added:** a plain boundary (no blank sample, the first reported frame of the next clip at media time
-  0.06 to 0.1, so not literally its frame 0: see the skipped start in the gate; its proxy requested before the clip ended and not again at the swap, playhead and readout in the next
+  0.06 to 0.1, so 3 to 5 frames are skipped: **this fails the scenario's clause "the first frame ... is its first frame"**, which the functional check did not enforce; see the skipped start in the gate; its proxy requested before the clip ended and not again at the swap, playhead and readout in the next
   clip); into a leading cut (first frame at 1.5, none inside the cut); over a clip cut whole; a slow proxy (the last
   frame held until the proxy arrived, then a `seeked` hand-over, no blank sample); the order changed while playing; **into
   a black card** (a second chapter with a 3 s card; 0 blank samples outside the card's span; the standby takes no part
@@ -695,7 +695,7 @@ Headless, muted, writes intercepted. **Pass in both browsers** unless stated:
   quiet re-read of the clips could be triggered from the page); the finger swipe in Firefox; the scrub, readout, step
   and card measurements in the headless runs (they are in the headed table above).
 
-**One scenario fails in both browsers: "Pause during the lead", its last clause.** A pause just after the standby started
+**Two scenarios fail in both browsers.** (1) "A plain boundary", its first-frame clause: the incoming clip's first reported frame is at 0.06 to 0.1 s (`pw/out31/ffF.txt`: `first_mt` 0.1, `ok` true because the check does not test the clause), and the gate's skips are up to 53 / 56.6 ms. Design D4's "What is accepted" (about 28 ms, Firefox only, IN = 0) is contradicted: about 30 ms median and up to 57 ms in Chrome, with IN = 0 the common case. The spec clause or the design must change (operator decision). (2) **"Pause during the lead", its last clause.** A pause just after the standby started
 leaves the Timeline paused on `s1710001.mp4` at 5.97 s, the standby paused at its pre-sought position (0.005 s), no frame of
 `s1710002.mp4` shown. Pressing Play then does **not** cross the boundary through the standby: the playhead is within
 `END_SLACK_MS` of the clip's end, so `play()` takes `startFrom`'s next-clip start (`follow.ts`), `moveVideo` loads the
@@ -709,7 +709,8 @@ ready standby when `startFrom` leaves the clip.
 
 - The gate on the operator's real audio device (a null sink has no hardware clock); the audible overlap in the lead
   (nothing reached a speaker, by rule, and the null sink's monitor was not captured).
-- The event of the readout scenario (9.00 / 40.00 / 6.02 s) and Chrome 154 / Firefox 155 as named (Chrome 158 and Firefox
+- **"The clips shrink under the playhead" is unverified**, and a headed gate with IN > 0 (leading cuts) was not run, so P above 0 was never measured headed.
+- The event of the readout scenario (9.00 / 40.00 / 6.02 s) and the Chrome and Firefox versions named (Chrome 158, which satisfies the spec floor of 157, and Firefox
   160 ran).
 - Display refresh other than 60 Hz; other proxies than the four 6.02 s, 50 fps ones; a clip entered at IN > 0 in the gate
   (P is learned only there; its functional runs above are not gate runs).
