@@ -521,3 +521,200 @@ nothing of lost time or hold.
   frame again at `play()` (`currentTime` still at the sought position); counting it made LEAD 3 to 11 ms, so a LEAD or
   alignment sample needs `currentTime` past the sought position as well.
 - Scripts: `pw/h22.py`, `pw/sc.py` in the session scratchpad. Not in the repo.
+
+### 6.9 Built (task 3.1, 2026-11-23)
+
+Everything here was run on the built code (`feat/seamless-playback` at `f6e9c834`) against `2024-06-27 - Grillning med
+grannar` (four 6.02 s, 50 fps proxies). **The boundary gate of D7 fails in both browsers.** Details below; nothing was
+tuned and no definition was changed after the first headed run. (The task asked for a subsection "§6.8 Built"; §6.8
+already holds the task 2.2 functional run, so this one is §6.9.)
+
+#### Setup
+
+- **Builds compared.** The built app is the branch's Vite (port 5174). The single-element hand-over it replaces is
+  `web/` of `d11e2345` (the parent of the first code commit), exported with `git archive` into the scratchpad and served
+  by its own Vite (port 5175), same service, same proxies, same hook. Only the Timeline differs.
+- **Service.** The task named the service on `127.0.0.1:8080`; nothing there answers `/api/v1`. The dev service the
+  earlier runs used (`auto-reel serve` on port 8102) was gone half-way through this task, so a second `auto-reel serve`
+  of the same library was started on 8102 from the main checkout's venv (no writes: the page refuses them) and stopped
+  at the end.
+- **Functional runs.** Playwright 1.65.2, Firefox 159 and Chromium from the image, headless, muted, no audio device, PUT,
+  POST and DELETE intercepted. Scripts in the session scratchpad (`pw/f31.py`, `pw/f31lib.py`), not in the repo.
+- **Headed runs.** Firefox 160.0.1 and Chrome 158.0.8127.36 (Flatpaks), fresh profiles, on the host display, **sound on**
+  and routed to a PipeWire null sink (`pactl load-module module-null-sink sink_name=claude_null`, module 536870916,
+  `PULSE_SINK=claude_null` in each browser's environment; unloaded at the end, `pactl list short sinks` no longer lists
+  it). The default sink (the operator's headset) was never touched. A watchdog logged every sink input and was set to
+  kill my browser if one of its streams sat on another sink. All 355 Firefox and 82 Chrome snapshots of my instances show
+  their streams on `claude_null` (6 Firefox snapshots show a corked stream not yet routed). The operator's own Firefox
+  streams were on their headset throughout and were not touched. (A first watchdog compared against any new stream. It killed the browser once because of the operator's own audio
+  and once because of my own corked, not yet routed stream; it was replaced by one that matches the Flatpak instance id
+  of the stream and ignores unrouted streams. No kept run was affected: each started on a fresh browser.)
+- **Page visible throughout.** A KWin script kept my browser windows above the others. `visibilityState` was sampled
+  every 2 s in every loop: 0 `hidden` samples in all 64 loops kept, `hasFocus()` true at the end of each. In-page writes
+  were refused (3 `title-card/preview` POSTs per block), no Playwright route.
+- **Script.** One loop is: put the playhead at 0:04 of `s1710001.mp4`, press Play, 21.8 s of play (three plain
+  boundaries, `s1 -> s2 -> s3 -> s4`), Pause if still playing. A block is a fresh tab, so a fresh calibration. Per
+  browser: `built` 12 loops, `single` 8 loops, `built` 12 loops, in one browser session (72 built and 24 single
+  boundaries). Firefox ran first.
+- **Definitions** are D7's, computed from the frame callbacks of both slots (`requestVideoFrameCallback`, callback time and
+  media time, `sb`-tagged frames of the standby excluded, the incoming's frames counted from the swap):
+  - lost = (frame-clock offset of the incoming over its first 0.5 s) minus (offset of the outgoing over its last second)
+    minus 6020 ms (the kept end);
+  - hold = longest gap between successive visible callbacks from the outgoing's last callback to 0.5 s after the incoming's
+    first;
+  - steady = the same over the outgoing's last second, valid when at most 52 ms;
+  - percentiles by linear interpolation; hold limit = median steady plus 20 ms in whole milliseconds.
+
+#### The boundary gate (headed, null sink, sound on)
+
+ms; "valid" = boundaries whose steady play kept its cadence (the gate counts only these); "all" = every boundary.
+
+Firefox 160.0.1:
+
+| Case | n (valid / all) | Lost p10 / p50 / p90 | Hold p50 / p90 / max | Steady median | Hold limit | Max skip |
+|---|---|---|---|---|---|---|
+| **built** (valid) | 69 / 72 | -40.6 / -10.0 / 7.2 | 117.0 / 133.0 / 150.0 | 50.0 | 70 | 53.0 |
+| built (all) | 72 | -40.0 / -10.2 / 7.0 | 117.0 / 133.0 / 150.0 | 50.0 | 70 | 53.0 |
+| single element (valid) | 12 / 24 | 217.2 / 222.5 / 263.0 | 234.0 / 250.9 / 267.0 | 50.5 | 70 | 0 |
+| single element (all) | 24 | 219.2 / 247.5 / 279.3 | 167.0 / 245.2 / 267.0 | 83.5 | 104 | 0 |
+
+Chrome 158.0.8127.36:
+
+| Case | n (valid / all) | Lost p10 / p50 / p90 | Hold p50 / p90 / max | Steady median | Hold limit | Max skip |
+|---|---|---|---|---|---|---|
+| **built** (valid) | 72 / 72 | -40.0 / -29.9 / -7.4 | 83.3 / 116.6 / 133.2 | 33.4 | 53 | 56.6 |
+| single element (valid) | 6 / 24 | 129.1 / 140.0 / 146.7 | 83.4 / 91.8 / 100.1 | 33.5 | 53 | 0 |
+| single element (all) | 24 | 126.7 / 146.7 / 160.0 | 83.3 / 83.4 / 100.1 | 66.7 | 87 | 0 |
+
+**Verdict.**
+
+| Term | Firefox built | Chrome built |
+|---|---|---|
+| p90 lost at most 20 ms | 7.2: yes | -7.4: yes |
+| p10 lost at least -40 ms | -40.6: **no** (by 0.6 ms; -40.0 over all 72) | -40.0: yes (on the limit) |
+| p90 hold at most steady + 20 | 133.0 against 70: **no** | 116.6 against 53: **no** |
+| no hold over 100 ms | max 150.0: **no** | max 133.2: **no** |
+| no skip over 60 ms | 53.0: yes | 56.6: yes |
+| **Gate** | **FAILS** | **FAILS** |
+
+The gate fails in Firefox, the primary browser, on the hold terms (and by 0.6 ms on the lost floor, if only valid
+boundaries count), and in Chrome on the hold terms. It is a large improvement on the single element in lost time (Firefox
+about 220 ms to about -10 ms median, Chrome about 140 ms to about -30 ms median), but it is not within one frame
+interval of continuity.
+
+**Lead and P as observed** (built, all 72 hand-overs each, every one by the `timer` path, none by `frame`, `ended` or
+`seeked`):
+
+| Browser | LEAD median (min to max) | LEAD clamp hits (0 / 250) | P |
+|---|---|---|---|
+| Firefox 160 | 52 ms (40 to 83) | 0 / 0 | 0 on every hand-over |
+| Chrome 158 | 72 ms (54 to 84) | 0 / 0 | 0 on every hand-over |
+
+P is 0 on every hand-over because every incoming clip here starts at frame 0 (IN = 0): no pre-roll is possible, so the
+alignment error cannot be corrected on this event. The consequence is visible in lost: the incoming clip's media clock
+runs ahead of its picture, so the start of the incoming is skipped (Chrome p50 -29.9 ms, Firefox p50 -10.0 ms, down to
+-56.6 and -53.0 ms), within the -60 ms skip limit but at the -40 ms floor at p10.
+
+**Where the hold comes from.** Diagnostic, not part of the gate. In every boundary the hold is the gap from the outgoing's
+last reported frame to the incoming's first reported frame after the swap. The swap is not at the one-frame step after
+the last kept frame: `swap` runs from the incoming slot's next frame callback once `swapAt = decision + one frame
+interval` has passed (`useTimelineVideo.ts`, `onFrameOf`). Timing from the frame clock of the outgoing (time of its
+frame 6.00) to the DOM swap, 72 boundaries each:
+
+| Browser | swap minus t(6.00), p10 / p50 / p90 | first incoming callback after the swap, p10 / p50 / p90 |
+|---|---|---|
+| Firefox 160 | 43 / 59 / 77 ms | 19 / 21 / 37 ms |
+| Chrome 158 | 24 / 34 / 47 ms | 16 / 49 / 50 ms |
+
+So the last kept frame is held about 40 to 60 ms (Firefox) or 20 to 30 ms (Chrome) longer than the one frame step, because
+the swap waits for the next callback of the incoming slot, and Firefox reports only every other frame. The
+single-element hold is 250 ms (Firefox) and 83 ms (Chrome) for comparison. Firefox's callback resolution (40 ms)
+also inflates the measured hold by up to one reporting interval, because D7 counts from the outgoing's last *reported*
+frame, which is up to 40 ms before its frame 6.00. This note is a reading of the numbers and the code, not a tested fix.
+
+**Steady cadence.** Firefox reports 33 or 50 ms gaps in steady play (about every other frame); 69 of 72 built boundaries
+and 12 of 24 single-element boundaries were valid. Chrome's steady gaps are 33 or 50 ms; all 72 built boundaries but only 6
+of 24 single-element ones were valid (the baseline's steady play is 67 ms more often: its steady median over all is 66.7
+ms). The single-element comparison therefore rests on 12 (Firefox) and 6 (Chrome) valid boundaries; the "all" rows have 24.
+
+#### Scrub, frame step, card hand-over, readout (headed, null sink, built)
+
+| Check | Firefox 160.0.1 | Chrome 158.0.8127.36 | Limit |
+|---|---|---|---|
+| Scrub, distinct frames presented per second, median (min to max over 24 / 12 one-second windows) | 30 (29 to 31) | 58 (49 to 60) | at least 30 |
+| Frame step, keydown to the next presented frame, 40 Right presses, p50 / p90 / max | 15.9 / 26.6 / 230.4 ms | 17.2 / 22.0 / 24.3 ms | p90 at most 60 ms |
+| Card hand-over, opening card to clip 1, sampled blank frames (each rAF, 600 ms around the card layer going away) | 0 of 6 hand-overs | 0 of 6 | none |
+| Readout across the first clip's end, width and left edge | one width and one left edge per element in all samples (299.7 / 366 px at 1280 / 390 px) | same (299.6 / 351 px) | fixed width |
+
+- **Scrub.** A scripted drag over each of the four clips (188 pointer moves of 16 ms, so 3 s; Chrome took 3.2 s, Firefox
+  6.3 s through its BiDi pointer actions), counted as distinct `mediaTime` among the reported frames in each whole
+  second of the drag (12 windows in Chrome, 24 in Firefox). Firefox sits on the limit (30.0 median, 29 at the minimum); its callbacks count the frames it
+  reports (`presentedFrames` delta also 30), so this is the same resolution caveat.
+- **Readout.** Four runs per browser (1280 and 390 px wide, light and dark), 100 ms samples (52 to 53 each) across the
+  first clip's end: the readout box has one width and one left edge, every text from the first clip's `Clip 0:04.00 of
+  0:06.02 Event 0:11.00 of 0:31.08` into the second's, and the slider's value text names clip and event. **The event is not
+  the one the spec scenario names** (clips of 9.00, 40.00 and 6.02 s, event 55.02): the library has none; this event's
+  clips are 6.02 s each (event 31.08). Chrome here is 158, not 154.
+
+#### Functional run in Playwright, Firefox and Chromium, every scenario
+
+Headless, muted, writes intercepted. **Pass in both browsers** unless stated:
+
+- **`event-timeline`, added:** a plain boundary (no blank sample, the first reported frame of the next clip at media time
+  0.06 to 0.1, so not literally its frame 0: see the skipped start in the gate; its proxy requested before the clip ended and not again at the swap, playhead and readout in the next
+  clip); into a leading cut (first frame at 1.5, none inside the cut); over a clip cut whole; a slow proxy (the last
+  frame held until the proxy arrived, then a `seeked` hand-over, no blank sample); the order changed while playing; **into
+  a black card** (a second chapter with a 3 s card; 0 blank samples outside the card's span; the standby takes no part
+  and the card covers the shown slot's load of the next clip, which shows blank video samples under it only); a scrub in the
+  lead (Chromium too: the shown slot and the standby paused 100 ms in, the standby at its pre-sought 1.5 s, play resumed
+  after the scrub); Next clip in the lead; "Play again while the standby is returning" (the return seek forced to take 700
+  ms by deferring it in the page; Firefox and Chromium both: the swap came only after the standby's `seeked`, first
+  frame at 1.56 and 1.58); the cancel-after-decision paths (a pause 40, 90 and 140 ms after the standby started: no blank,
+  everything paused; a late proxy whose standby starts and is cancelled right after it started: swap then paused at the
+  first kept frame; a pause after the decision with the standby's seek slow); Firefox and Chromium with **P above 20**
+  (learned from leading cuts on every clip: P went 0, 0, then 40, the clamp, in Firefox; 0, 0, 0, 40, 40, 28 and 35 in
+  Chromium) followed by a delayed proxy and the `seeked` hand-over (first frame 1.56 and 1.54, 0 blank samples).
+- **standby requirement:** nothing loads while paused (only the proxies of the clips the playhead visited; the second slot
+  has no `src`); the standby is muted, `opacity: 0`, `aria-hidden`, `tabindex -1` while it waits, and unmuted and
+  playing, still `opacity: 0` and the button still `Pause`, in the lead state (the lead state was held still by
+  starting the standby by hand; the 100 ms window of a real lead cannot be photographed), stage screenshots show only
+  the shown clip; another player starting 1 s before the boundary (a foreign `<video>` and the bin's preview player: the
+  Timeline pauses, the standby did not start); a preview opened while the Timeline plays (one video left, no Timeline
+  proxy requested); Use as poster after a hand-over (the poster area shows the shown slot's frame); the standby is turned
+  before it is shown (turned 90, then Rotate right before the boundary: the shown slot has 180, no proxy requested again).
+- **`web-app`:** the Movie section's player is paused when a clip's player is started in the read view (Firefox and
+  Chromium, the read view only: Edit mode has no Movie section, so the scenario "Play on the event's movie in the last
+  second" was run with a foreign `<video>` and the bin's preview player).
+- **`event-timeline`, modified:** a scrub shows the right frame; the grip is dragged; a scrub across a boundary (never
+  more than one slot with a `src`, no standby event); "The proxy is gone" (a 404 problem body for the second clip: "The
+  proxy of s1710002.mp4 is no longer there.", the Prepare button, four clips on the track, the third clip plays); a clip
+  press does not move the playhead; a clip drag does not scrub; a double press places the playhead; a finger swipe on a
+  clip scrolls (Chromium only: Playwright's Firefox has no touch emulation); a preview releases the Timeline's video and
+  scrubbing closes the preview; the turn follows the clip.
+- **Not run in Playwright:** "The clips shrink under the playhead" (Edit mode re-reads only the render verdict, so no
+  quiet re-read of the clips could be triggered from the page); the finger swipe in Firefox; the scrub, readout, step
+  and card measurements in the headless runs (they are in the headed table above).
+
+**One scenario fails in both browsers: "Pause during the lead", its last clause.** A pause just after the standby started
+leaves the Timeline paused on `s1710001.mp4` at 5.97 s, the standby paused at its pre-sought position (0.005 s), no frame of
+`s1710002.mp4` shown. Pressing Play then does **not** cross the boundary through the standby: the playhead is within
+`END_SLACK_MS` of the clip's end, so `play()` takes `startFrom`'s next-clip start (`follow.ts`), `moveVideo` loads the
+next clip into the shown slot, and the standby is re-targeted. The result is the accepted "move of the playhead" flash
+(2 to 3 blank video samples at the load, 0 at the swap of the next boundary), not a seamless boundary. This is the
+existing Play-from-the-end rule colliding with the scenario's wording, not a regression in the hand-over. Either the
+scenario's last clause becomes "Play then goes on into the next clip's first kept frame", or `play()` hands over to a
+ready standby when `startFrom` leaves the clip.
+
+#### What this run could not verify
+
+- The gate on the operator's real audio device (a null sink has no hardware clock); the audible overlap in the lead
+  (nothing reached a speaker, by rule, and the null sink's monitor was not captured).
+- The event of the readout scenario (9.00 / 40.00 / 6.02 s) and Chrome 154 / Firefox 155 as named (Chrome 158 and Firefox
+  160 ran).
+- Display refresh other than 60 Hz; other proxies than the four 6.02 s, 50 fps ones; a clip entered at IN > 0 in the gate
+  (P is learned only there; its functional runs above are not gate runs).
+- The 100 ms standby start window as a screenshot, and "The clips shrink under the playhead".
+- Instrumentation cost: both slots carry a frame callback, a rAF sampler and a 100 ms readout timer in these runs (the
+  same hook for the built and the single-element runs).
+- Raw results: `gate/results/gate-firefox-ff1.json`, `gate-chrome-ch1.json`, `scrub-*`, `step-*`, `card-*`, `readout-*`,
+  `sinkinputs.log`; functional output `pw/out31/ffF.txt`, `chF.txt` (session scratchpad, not in the repo).
