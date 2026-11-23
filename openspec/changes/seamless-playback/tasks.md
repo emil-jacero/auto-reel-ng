@@ -10,7 +10,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
 
 ## 0. Gate
 
-- [ ] 0.1 Dependency gate: `plain-clip-bin`, the last change of the plain clip bin series, MUST be archived, and so,
+- [x] 0.1 Dependency gate: `plain-clip-bin`, the last change of the plain clip bin series, MUST be archived, and so,
   by their own gates, every change before it. Both of these must succeed from the repo root:
   - `ls -d openspec/changes/archive/*-editor-shortcuts openspec/changes/archive/*-clip-context-menu openspec/changes/archive/*-clip-multi-select openspec/changes/archive/*-chapters-in-inspector openspec/changes/archive/*-clip-tab-and-player openspec/changes/archive/*-plain-clip-bin`;
   - `test ! -d openspec/changes/plain-clip-bin`.

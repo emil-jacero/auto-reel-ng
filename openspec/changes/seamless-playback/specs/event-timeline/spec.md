@@ -130,22 +130,21 @@ A proxy whose playing fails SHALL be said by cause, as the clip preview says it:
 
 ### Requirement: Edit mode holds one video at a time
 
-Edit mode SHALL never hold more than one player: the Timeline's, whose shown `<video>` exists while its track is open and whose standby `<video>` exists only while it plays ("The playhead scrubs one video"), or one clip preview's `<video>`. Opening a clip's preview ("Edit mode previews a clip on request") SHALL release both of the Timeline's videos, stopping their playback and their loading, and keep the Timeline open with the playhead where it stood and every handle usable. Moving the playhead, or pressing Play, on the Timeline SHALL close any open clip preview and create the Timeline's shown video again at the playhead (it loads the proxy of the clip the playhead is in, as when the track opens). Releasing and creating the video SHALL NOT be an edit, SHALL NOT disturb a drag or a typed time, and SHALL NOT move keyboard focus off the control that had it.
+Edit mode SHALL never hold more than one player: the Timeline's, whose shown `<video>` exists while its track is open and whose standby `<video>` exists only while it plays ("The playhead scrubs one video"), or the preview's in the bin's player. Opening a clip's preview, with the player's Play ("Edit mode previews a clip on request"), SHALL release both of the Timeline's videos, stopping their playback and their loading, and keep the Timeline open with the playhead where it stood and every handle usable. Moving the playhead, or pressing Play, on the Timeline SHALL close the player's preview, which shows its clip's thumbnail again, and create the Timeline's shown video again at the playhead (it loads the proxy of the clip the playhead is in, as when the track opens). Selecting a clip on the track SHALL NOT release the Timeline's video: the player shows the clip's thumbnail until its Play is pressed. Releasing and creating the video SHALL NOT be an edit, SHALL NOT disturb a drag or a typed time, and SHALL NOT move keyboard focus off the control that had it.
 
 #### Scenario: A preview releases the timeline's video
-- **WHEN** in Edit mode the Timeline's video has been scrubbed to 1.6 s of `s1710001.mp4` and the operator presses Watch in that clip's Cuts panel
-- **THEN** the page holds one video, the clip's preview; the Timeline is still open with its playhead at 1.6 s and its handles working
+- **WHEN** in Edit mode the Timeline's video has been scrubbed to 1.6 s of `s1710001.mp4`, the operator presses that clip's block and then Play in the bin's player
+- **THEN** after the press on the block the page still holds the Timeline's video; after Play it holds one video, the clip's preview, and the Timeline is still open with its playhead at 1.6 s and its handles working
 
 #### Scenario: Scrubbing closes the preview
-- **WHEN** a clip's preview is open and the operator moves the Timeline's playhead
-- **THEN** the preview closes, the Timeline's video shows the playhead's frame, and the page holds one video
+- **WHEN** a clip's preview is open in the bin's player and the operator moves the Timeline's playhead
+- **THEN** the preview closes, the player shows the clip's thumbnail, the Timeline's video shows the playhead's frame, and the page holds one video
 
 #### Scenario: A preview opened while the Timeline plays
-- **WHEN** the Timeline plays `s1710001.mp4` with `s1710002.mp4` loaded in its standby, and the operator opens the
-  preview of `s1710003.mp4`
+- **WHEN** the Timeline plays `s1710001.mp4` with `s1710002.mp4` loaded in its standby, and the operator plays the
+  preview of `s1710003.mp4` in the bin's player
 - **THEN** the page holds one video, the preview; neither of the Timeline's videos remains, and no Timeline proxy is
   requested until the operator moves the playhead or presses Play
-
 ### Requirement: The Timeline shows a clip's turn
 
 The Timeline SHALL show a clip turned by the clip's `rotate` (the draft's),
