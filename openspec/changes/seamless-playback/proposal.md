@@ -28,15 +28,20 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
 
 - **Two videos, one shown.** The Timeline's stage holds a **shown** `<video>` and, while the Timeline plays, one
   **standby** `<video>`:
-  - The standby is muted and invisible (opacity 0, still rendered). It is hidden from assistive technology and
+  - The standby is invisible (opacity 0, still rendered) and muted until its early start. It is hidden from assistive technology and
     unreachable by Tab.
   - While a clip plays, the standby loads the next clip's proxy and is sought to that clip's **first kept frame**:
     after a leading cut, the cut's end, not 0. It also carries that clip's turn.
-- **The hand-over.** On the last kept frame of the playing clip:
-  - the Timeline pauses the shown video, which keeps that frame on screen;
-  - it unmutes the standby and plays it;
-  - on the standby's first presented frame the two swap roles. The freed element then preloads the clip after that.
-  - The playhead, cut skipping and the readout follow the new shown video as before.
+- **The hand-over starts early.** Headed measurements (2026-11-23) showed that playing the standby at the boundary
+  loses too much time in both browsers, so the standby is started before it:
+  - it is sought exactly to the next clip's first kept frame, and the Timeline plays it, unmuted and still invisible,
+    one **lead** before the playing clip's kept end. The lead is the session's measured play start-up latency (running
+    median of the last 9 hand-overs, 40 ms to begin with, reset when the audio device changes);
+  - on the playing clip's last kept frame the Timeline pauses it, which keeps that frame on screen;
+  - one frame interval later the two swap roles, and the freed element then preloads the clip after that;
+  - a pause, scrub, seek, Previous/Next clip, a yield to another player or a reload during the lead stops the standby
+    and puts it back at its first kept frame;
+  - the playhead, cut skipping and the readout follow the new shown video as before.
 - **Fallback, never worse than today.**
   - If the standby holds the right clip but is not ready yet, the last frame stays on screen until it is.
   - If the standby holds anything else (a re-targeted or failed load, or a clip shorter than its load), the boundary
@@ -49,9 +54,14 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
   - the hand-over is the Timeline playing on, not a new start;
   - a clip preview releases both elements, as it released the one before.
 - **Use as poster** takes the shown video's frame.
-- **A boundary gate.** Measured in headed Chrome and Firefox over 20 boundaries, the incoming clip loses at most one
-  frame of play time at the 90th percentile, and no frame is held longer than steady play holds one plus one frame.
-  The measured scrub, frame-step and card hand-over gates are re-measured.
+- **A boundary gate.** Measured in headed Chrome and Firefox over 20 plain boundaries each, with sound on and routed
+  to a null sink: at the 90th percentile the play time lost is at most one frame interval and the incoming clip is
+  not skipped by more than two, and no frame is held longer than steady play holds one plus one frame. The same
+  script is run against today's single element and reported beside it. The measured scrub, frame-step and card
+  hand-over gates are re-measured.
+- **Operator decision, 2026-11-23.** Adopt the early start. **Firefox is the primary browser**; Chrome must still
+  work and is measured too. The extra check of the audio overlap against a real sink was skipped by choice: a known
+  risk, since a Bluetooth sink has a larger start-up latency than any measured here.
 
 ## Non-goals
 
@@ -77,7 +87,7 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
 
 - `event-timeline`:
   - ADDED "Play crosses a clip boundary without a pause" (with the measured gate) and "The Timeline's standby video
-    is never seen, heard or counted as a player".
+    is never seen, never counted as a player, and heard only as the incoming clip's sound".
   - MODIFIED "The playhead scrubs one video": one shown video, and the flash is accepted only for a move of the
     playhead.
   - MODIFIED "Edit mode holds one video at a time": one player, whose standby exists only while it plays.
@@ -90,8 +100,8 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
 
 - **Web only.**
   - `timeline/useTimelineVideo.ts` holds the two elements, the preload and the hand-over.
-  - A new pure module `timeline/standby.ts` holds the standby's target and its load/seek/ready state, tested with
-    `node:test`.
+  - A new pure module `timeline/standby.ts` holds the standby's target and its load/seek/ready state, and a new pure
+    `timeline/lead.ts` holds the lead calibrator and the early-start timing, both tested with `node:test`.
   - `timeline/Timeline.tsx` and `timeline.css` render the stage.
   - `timeline/posterFrame.ts` reads the shown element.
   - `playback/coordinator.ts` treats the Timeline's elements as one player through a predicate.
@@ -102,13 +112,16 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
   - The CLI is untouched: this is browser playback of proxies, with no engine capability for the CLI to reach
     (Principle V).
   - No new dependency.
-- **Complexity (Principle VII).** The cost is a second decoder while playing, and a hook that tracks which element is
-  shown. A simpler fix does not remove the stall: skipping the extra seek, or warming the cache, still tears down the
-  decoder at each swap. A second element is the smallest change that does (design, Research & Decisions).
+- **Complexity (Principle VII).** The cost is a second decoder while playing, a hook that tracks which element is
+  shown, and an early start with a measured lead: a timer on the playing clip's frame clock, a calibrator, and a
+  cancel path for the lead. A simpler fix does not remove the stall: skipping the extra seek, or warming the cache,
+  still tears down the decoder at each swap, and the plain at-boundary hand-over misses the gate in both browsers
+  (research §6). The early start is the smallest design that was measured to meet it (design, Research &
+  Decisions).
 - **Depends on** the last change of the plain clip bin series (`docs/editor-workspace.md`), and through it on
   `editor-shortcuts` and `clip-context-menu`. These touch the same Timeline and workspace files.
   - `clip-tab-and-player` (in that series) modifies two of the same requirements: "Edit mode holds one video at a
     time" and "The event page plays one video at a time", for the bin's player.
   - This change's MODIFIED blocks are copied from today's main specs, so task 0.1 copies them again from the
     archived result before any code.
-- **Size:** about 2 to 3 days.
+- **Size:** about 3 to 4 days.

@@ -2,10 +2,10 @@
 
 ### Requirement: Play crosses a clip boundary without a pause
 
-While the Timeline plays, the clip that play goes on into SHALL be loaded and sought to its first kept frame before
-the playing clip ends. At the boundary the picture SHALL go from the last kept frame of one clip to the first kept
-frame of the next with no blank picture and no added pause. If the next clip is not ready in time, the last frame
-SHALL stay on screen until it is. A boundary through a black title card keeps the card's hand-over.
+While the Timeline plays, the next clip SHALL be loaded, sought to its first kept frame and started one measured
+play start-up latency before the playing clip ends. The picture SHALL go from the last kept frame of one clip to the
+first kept frame of the next with no blank picture and no added pause; if the next clip is not ready, the last frame
+SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 
 #### Scenario: A plain boundary
 - **WHEN** on `2024-06-27 - Grillning med grannar` the Timeline plays from 0:04.00 of `s1710001.mp4` into
@@ -15,13 +15,25 @@ SHALL stay on screen until it is. A boundary through a black title card keeps th
   `s1710002.mp4`; and the request for `s1710002.mp4`'s proxy was made before `s1710001.mp4` ended
 
 #### Scenario: The boundary gate
-- **WHEN** a script plays 20 plain boundaries between 50 fps proxies, each next clip having had at least 1 s of play
-  to load, in headed Chrome 157 and in headed Firefox 155 or newer, in runs whose steady play presents every frame
-  (no frame held longer than two frame intervals in the second before a boundary)
-- **THEN** in each browser, at the 90th percentile, the play time lost at a boundary (real time minus media time
-  played, from the last kept frame to 0.5 s later) is at most one frame interval (20 ms), and the longest time a
-  frame stays on screen across the boundary is at most the steady play's longest plus one frame interval; no
-  boundary holds a frame longer than 100 ms
+- **WHEN** a script plays at least 20 plain boundaries per browser between 50 fps proxies, each next clip having had
+  at least 1 s of play to load, in headed Chrome 157 or newer and in headed Firefox 155 or newer, with the browser's
+  sound on and routed to an audio output that accepts the stream but reaches no speaker (a null sink), the page
+  visible throughout, counting only boundaries whose steady play keeps its cadence (in the second before the boundary
+  no frame is held longer than three refresh intervals of the display plus 2 ms, 52 ms at 60 Hz)
+- **THEN** in each browser: the play time lost at a boundary (real time from the outgoing clip's last kept frame to
+  0.5 s later, minus the media time of both clips played in that span) is at most one frame interval (20 ms) at the
+  90th percentile, and at least minus two frame intervals (-40 ms, the incoming clip's start skipped) at the 10th
+  percentile, each clip's position taken from its presented frames (frame callback time minus media time), not from
+  `currentTime`; the longest time a frame stays on screen across the boundary is, at the 90th percentile, at most the
+  median of the steady play's longest hold plus one frame interval, compared in whole milliseconds; no boundary holds
+  a frame longer than 100 ms or skips more than 60 ms of the incoming clip; and the same script run in the same
+  session against the single-element hand-over this change replaces is reported beside it
+
+#### Scenario: Pause during the lead
+- **WHEN** the Timeline plays the last 0.2 s of `s1710001.mp4` with `s1710002.mp4` in its standby and the operator
+  presses Pause just after the standby has started
+- **THEN** the Timeline is paused on `s1710001.mp4`, the standby is paused and back at its first kept frame, no frame
+  of `s1710002.mp4` was shown, and Play then crosses the boundary as before
 
 #### Scenario: Into a leading cut
 - **WHEN** the clip after the playing one has a cut from 0 to 1.50 s
@@ -45,12 +57,13 @@ SHALL stay on screen until it is. A boundary through a black title card keeps th
 - **WHEN** the next chapter opens with a black title card
 - **THEN** the card plays and hands over to its clip as "The Timeline plays the title cards as the movie will" says
 
-### Requirement: The Timeline's standby video is never seen, heard or counted as a player
+### Requirement: The Timeline's standby video is never seen or counted as a player, and heard only as the incoming clip
 
-The Timeline SHALL load a standby `<video>` only while it plays, and only with the clip play goes on into. Until it
-takes over, the standby SHALL be invisible, muted, hidden from assistive technology and out of the Tab order, and
-SHALL NOT count as playing for the page's one-video rule. Pause SHALL keep it as it is; a clip preview and closing the
-Timeline SHALL release it. Use as poster SHALL take the shown video's frame.
+The Timeline SHALL load a standby `<video>` only while it plays, with the clip play goes on into. The standby SHALL be
+invisible, hidden from assistive technology and out of the Tab order, and muted and not counted as playing until its
+early start; from then until it takes over it plays unmuted as the Timeline's own play. A pause, scrub, seek, Previous
+or Next clip, yield or reload SHALL put a started standby back at its first kept frame. A preview and closing the
+Timeline SHALL release it.
 
 #### Scenario: Nothing loads ahead while paused
 - **WHEN** Edit mode opens on an event and the operator moves the playhead without pressing Play
@@ -59,11 +72,13 @@ Timeline SHALL release it. Use as poster SHALL take the shown video's frame.
 #### Scenario: The standby is neither seen nor heard
 - **WHEN** the Timeline plays `s1710001.mp4` with `s1710002.mp4` loaded in its standby
 - **THEN** the standby is muted, fully transparent, hidden from assistive technology and not focusable, and a
-  screenshot of the stage shows only `s1710001.mp4`'s frame
+  screenshot of the stage shows only `s1710001.mp4`'s frame; and in the last lead before the boundary the standby
+  plays unmuted and is still fully transparent, with the screenshot showing only `s1710001.mp4`
 
 #### Scenario: Another player starts before the boundary
 - **WHEN** the Timeline plays the last second of `s1710001.mp4` and the operator presses Play on the event's movie
-- **THEN** the Timeline pauses, its standby does not start at the boundary, and the movie keeps playing
+- **THEN** the Timeline pauses, its standby does not start (or, if it had started, is paused and put back at its
+  first kept frame), and the movie keeps playing
 
 #### Scenario: Use as poster after a hand-over
 - **WHEN** play has gone on into `s1710002.mp4`, the operator pauses at 0:01.00 of it and presses Use as poster
@@ -73,7 +88,7 @@ Timeline SHALL release it. Use as poster SHALL take the shown video's frame.
 
 ### Requirement: The playhead scrubs one video
 
-The Timeline SHALL show exactly one `<video>` (its shown video), created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. While it plays it MAY also hold one standby `<video>`, which is never shown before it takes over ("The Timeline's standby video is never seen, heard or counted as a player"). The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track's empty lane or a black card's span with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body, clip blocks included, SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead, and in Edit mode a press with a mouse or a pen on it that moves more than 3 px SHALL start a reorder drag, not a scrub ("A clip is reordered by dragging it on the track"), and a reorder drag SHALL NOT move the playhead nor pause or resume play; a press on a cut's span or a video card's span inside the block selects that cut or card on press, and is not dragged (only the rest of the block's body starts a reorder); a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
+The Timeline SHALL show exactly one `<video>` (its shown video), created when the track opens, showing the proxy of the clip the playhead is in, at the playhead's time in that clip. While it plays it MAY also hold one standby `<video>`, which is never shown before it takes over ("The Timeline's standby video is never seen or counted as a player, and heard only as the incoming clip"). The playhead SHALL be a slider over the whole timeline: it SHALL have the role `slider`, a name ("Playhead"), `aria-valuemin`, `aria-valuemax` and `aria-valuenow` in the timeline's seconds, and a value text that names the clip, the time in it and the time in the whole timeline, each said by its noun ("Harbour, clip 0:12.4 of 0:24.96; event 1:12 of 3:12", the times in the Cuts panel's time format, not padded). Dragging on the ruler SHALL move the playhead; so SHALL dragging on the track's empty lane or a black card's span with a mouse or a pen, and so SHALL dragging the playhead's own grip. With touch, the ruler SHALL scrub and a swipe on the track body, clip blocks included, SHALL scroll it. A press on the ruler SHALL move the playhead there, and so SHALL a press on the track's empty lane. A single press on a clip's block (its body, not its edge tools or handles) SHALL select the clip and SHALL NOT move the playhead, and in Edit mode a press with a mouse or a pen on it that moves more than 3 px SHALL start a reorder drag, not a scrub ("A clip is reordered by dragging it on the track"), and a reorder drag SHALL NOT move the playhead nor pause or resume play; a press on a cut's span or a video card's span inside the block selects that cut or card on press, and is not dragged (only the rest of the block's body starts a reorder); a double press on it SHALL place the playhead there ("A clip is selected on the track or in the bin"). A press in a black card's span still puts the playhead in the card.
 
 Moving the playhead into another clip (a scrub, a press, a key, Previous or Next clip) SHALL load that clip's proxy into the shown `<video>` and seek it, so the picture is the clip's frame at that time; a short flash between two clips is accepted for such a move, and not when Play goes on into the next clip ("Play crosses a clip boundary without a pause"). While the pointer is moving, the Timeline SHALL keep at most one seek in flight and SHALL seek to the latest pointer position when it completes, so that a scrub across many clips never queues a seek per pointer move. The video SHALL be paused while scrubbing. The picture and the playhead SHALL end where the pointer ended.
 

@@ -45,8 +45,8 @@ handled below:
 The stage renders two `<video class="tl-video">` elements, slots A and B. Both are direct children of `.tl-stage`,
 so `rotate.css` turns each, and both have `preload="auto"`, `playsInline`, `aria-hidden="true"` and
 `tabIndex={-1}`.
-- **Which is shown.** The hook holds the index of the shown slot. The other slot carries `data-standby` and the
-  `muted` property. Swapping roles sets these attributes directly, with no React render, as `data-turn` already is.
+- **Which is shown.** The hook holds the index of the shown slot. The other slot carries `data-standby` and, except
+  during the lead (D4), the `muted` property. Swapping roles sets these attributes directly, with no React render, as `data-turn` already is.
 - **CSS.**
   ```css
   .tl-stage > .tl-video { position: absolute; inset: 0; }                     /* both fill the 16:9 box */
@@ -68,7 +68,8 @@ export type Standby =
   | { kind: 'idle' }
   | { kind: 'loading' | 'seeking' | 'ready'; target: Target; address: string }
 export function standbyStep(s: Standby, e: 'loadedmetadata' | 'seeked' | 'error' | 'released'): Standby
-/** At the end of the playing clip: hand over, wait for the standby (it holds `want` and is on its way), or load as today. */
+/** At the start of the lead before the playing clip's end (and again if it is missed): hand over, wait for the
+ *  standby (it holds `want` and is on its way), or load as today. */
 export function atBoundary(s: Standby, want: Target, address: string): 'hand-over' | 'wait' | 'load'
 ```
 - **Loading.** `loading` sets `src`, the clip's turn and `muted`. `loadedmetadata` leads to `seeking`, with
@@ -91,22 +92,34 @@ export function atBoundary(s: Standby, want: Target, address: string): 'hand-ove
   to `standbyStep`; those of the shown slot go to today's handlers. A `pause` or `error` of the standby never
   reaches the operator's state.
 
-### D4. The hand-over
-When `onFrame` gives `end` on the shown slot S, `advance()` asks `atBoundary(standby, want, address)`:
-- **`hand-over`:**
-  1. Check `resumeOrYield(false, anotherPlays(own, videos))`. When another player plays, the Timeline yields: it
-     stops, and nothing starts.
-  2. Otherwise:
-     - set `T.muted = false`;
-     - mark S's pause as the hook's own, and call `S.pause()`, so S's last frame stays on screen;
-     - call `T.play()`, then `playhead.set(want)`;
-     - bind the coalescer to T and call `coalescer.sync(want)`. Nothing is in flight then: `arm()` checks
-       `!coalescer.busy()` before `onFrame`.
-  3. On T's first presented frame (`requestVideoFrameCallback`), swap: T loses `data-standby` and S gains it, S is
-     muted, and the swap listeners run (D6). Then S loads `standbyTarget(…, want.clip)`. `arm()` follows T from its
-     `playing`, as today.
+### D4. The hand-over (early start)
+The standby T is always sought exactly to the incoming clip's first kept frame (no pre-roll, so it works at IN = 0)
+and is started **before** the outgoing slot S ends, so that T's audio start-up and clock are already running when S's
+last kept frame has had its time.
+
+- **The lead (`timeline/lead.ts`, pure).** LEAD is the session's play start-up latency: the time from `T.play()` to
+  T's first presented frame past its sought frame.
+  - It is the running median of the last 9 hand-overs, clamped to [0, 250] ms, with 40 ms before the first one.
+  - It is measured at every hand-over, and reset to 40 ms on `navigator.mediaDevices` `devicechange` (a new audio
+    device has another latency).
+- **Arming.** From S's frame clock (the `requestVideoFrameCallback` callback time minus `mediaTime`, median over the
+  last second) the hook schedules the start at S's kept end minus LEAD (`timeline/lead.ts`'s timing helper takes the
+  frame clock, the kept end and LEAD, and returns when to start). When it fires, `atBoundary(standby, want, address)`
+  is asked; if the answer is not `hand-over`, nothing starts early and the boundary falls back to `wait` or `load`.
+- **Start.** `resumeOrYield(false, anotherPlays(own, videos))`: when another player plays, the Timeline yields (it
+  stops, and nothing starts). Otherwise `T.muted = false` and `T.play()`. T stays `data-standby` (opacity 0) and
+  **unmuted** through the lead: muting it during the lead makes it skip 24 to 47 ms of the incoming clip (research
+  §6.7), because a muted element has no audio start-up and its clock runs ahead of its first frame.
+- **Decision (S's last kept frame).** Mark S's pause as the hook's own, `S.pause()`, `playhead.set(want)`, bind the
+  coalescer to T and `coalescer.sync(want)`. Nothing is in flight then: `arm()` checks `!coalescer.busy()` before
+  `onFrame`.
+- **Swap.** One frame interval after the decision, T loses `data-standby`, S gains it and is muted, and the swap
+  listeners run (D6). Then S loads `standbyTarget(…, want.clip)`, and `arm()` follows T.
+- **Cancel during the lead.** Between the start and the swap, a pause, a scrub, a seek, Previous/Next clip, a yield
+  (D5) or an event reload pauses T and seeks it back to its first kept frame. S stays shown, and the Timeline goes on
+  as that action says.
 - **`wait`:** S is paused (its own pause) and holds its last frame, and a flag like `handOverWait` is set. The
-  standby's `seeked` runs the hand-over.
+  standby's `seeked` runs the hand-over (start, then the swap as above, with no lead to spend).
 - **`load`:** today's path: `moveVideo(want)` on S.
 - **The `ended` backstop** runs the same `advance()`.
 - **A black-card gap** keeps `enterCard`, with the anchor loaded into the shown slot during the card.
@@ -116,13 +129,15 @@ When `onFrame` gives `end` on the shown slot S, `advance()` asks `atBoundary(sta
 ### D5. One player for the page (`playback/coordinator.ts`)
 - **The predicate.** `anotherPlays(self, videos)` and `watchOtherStarts(root, self, onOther)` take
   `own: (video) => boolean`. The hook passes "is one of my two slots".
-- **The standby counts for nothing.** It is paused until it takes over, so it never counts as playing.
+- **A paused standby counts for nothing.** It never counts as playing. The standby may play for up to LEAD ms while S
+  still plays; both slots playing at once is the Timeline's own, so it is not "another".
 - **The hand-over is not another start.** Its `play` event is the Timeline's own, so `watchOtherStarts` ignores it.
-  The page's capturing listener may call `pauseOthers(T, …)`, but S is already paused. When another player plays,
-  the hand-over has already yielded (D4).
+  The page's capturing listener may call `pauseOthers(T, …)`, which must not pause S during the lead (S is an own
+  slot). When another player plays, the hand-over has already yielded (D4), and a yield during the lead pauses T and
+  seeks it back (D4, cancel).
 - **`keepOneVideoPlaying` is unchanged.**
-- **Tests.** `coordinator.test.ts` gains: a paused standby is not "another"; the own slot's start does not call
-  `onOther`; a third video does.
+- **Tests.** `coordinator.test.ts` gains: a paused standby is not "another"; both own slots playing during the lead
+  is not "another"; the own slot's start does not call `onOther`; a third video does.
 
 ### D6. The shown slot for its readers
 The hook returns `shown(): HTMLVideoElement | null` and `onSwap(listener): () => void` in place of `videoRef`. The
@@ -136,19 +151,23 @@ stage gets `slotRefs`.
 The gate is the one in `event-timeline`, "Play crosses a clip boundary without a pause". Its terms:
 - **Hold.** The longest interval between successive frames on screen, from the outgoing clip's last kept frame to
   0.5 s into the incoming one. With two slots, the incoming frames count from the swap.
-- **Steady hold.** The same, over the outgoing clip's preceding second. A run counts only when the steady hold is at
-  most two frame intervals.
-- **Lost.** Measured 0.5 s after the hand-over decision: real time since the decision, minus the outgoing clip's
-  unplayed media time, minus the incoming clip's media time played. It does not depend on presentation cadence.
+- **Steady hold.** The same, over the outgoing clip's preceding second. A run counts only when no steady frame is held
+  longer than 3 display refresh intervals plus 2 ms (52 ms at 60 Hz).
+- **Lost.** Real time from the outgoing clip's last kept frame to 0.5 s later, minus the media time of both clips
+  played in that span. It is signed: a negative value is incoming content skipped. Each clip's position is measured on
+  the frame clock of its presented frames (`requestVideoFrameCallback` callback time minus `mediaTime`), not from
+  `currentTime`, which is stale by up to about 40 ms in Firefox (research §6.7).
 
 The harness is the one in the research note:
 - an init script hooks both `.tl-video` slots (`requestVideoFrameCallback`, the `src`, `currentTime` and `play()`
   calls, and the media events);
 - writes are refused inside the page, by patching `fetch` and XHR. A Playwright route would turn Chromium's HTTP
   cache off and change the revalidation being measured;
-- the browsers run headed, under Xvfb or on the host display;
-- sound is muted in the browser (`--mute-audio`, with no audio device passed to a container) and never reaches the
-  operator's speakers.
+- the browsers run headed on the host display, the page visible throughout;
+- sound is **on** in the browser and routed to a null sink (`pactl load-module module-null-sink`, `PULSE_SINK`), which
+  accepts the stream but reaches no speaker. The run checks the sink inputs, never changes the default sink and
+  unloads the module afterwards. Without an accepting sink Chrome's play start-up is 150 ms instead of 66 ms
+  (research §6.6), so a muted or sink-less run would measure the wrong thing.
 
 ## Research & Decisions
 
@@ -202,12 +221,45 @@ crossfade. The incoming slot is unmuted just before `play()`, after the operator
 allow it.
 **Rationale**: the movie's own joins are hard cuts too (stream-copy concat), so the preview matches the render.
 
+### Start the standby at the boundary, or before it
+**Context**: the headed measurements (`docs/research/seamless-playback.md` §6.3 to §6.7, 2026-11-23). The operator's
+primary browser is **Firefox**; Chrome must still work.
+**Explored**:
+- A. Plain at-boundary hand-over: `T.play()` on S's last kept frame, swap on T's first frame.
+- B. Early start: `T.play()` about LEAD before S's kept end, T sought exactly to its first kept frame (D4).
+- C. Early start with T muted until the swap, or with a pre-roll (T sought before its first kept frame).
+
+**Decision**: B. A is rejected.
+**Rationale**:
+- A fails the gate in both browsers. Headed, p90 lost of the two-element swap is 21 ms in Firefox 160 (frame clock;
+  hold p90 117 ms against 86 ms allowed), 84 to 106 ms in Chrome with a null sink and 167 to 215 ms in Chrome with no
+  sink (§6.3, §6.6, §6.7). Task 0.2's STOP condition 1 held for the plain design.
+- B meets the gate where it was tried: Chrome with the null sink (`early-66-0`: p90 lost -10 ms, hold p90 66 ms
+  against 70) and with no sink (`early-150-0`: -12 ms, hold 66 ms); Firefox with one frame of pre-roll (`early-20-20`:
+  -5 ms, hold p90 52 ms against 60). Firefox's own result sits at the 40 ms frame-report resolution, so it is the
+  least certain of them, and it is why the lead is measured per session, not fixed.
+- C is worse. A pre-roll of the same length as the lead only moves the first kept frame later (Chrome 45 to 136 ms
+  lost, holds 180 to 283 ms). Muting T until the swap skips 24 to 47 ms of the incoming clip, because the audio
+  start-up is the cost being hidden. Pre-seeking with no pre-roll and an unmuted early `play()` is the one that works
+  in Chrome; in Firefox P = 0 ran 26 to 30 ms ahead (`early-24-0`), which the per-hand-over calibration and the
+  clamp around it are meant to absorb. Task 3.1 re-measures this on the built code.
+- The lead depends on the machine and the audio device. A running median of the real hand-overs, reset on
+  `devicechange`, replaces a constant.
+- The audio overlap (both slots playing during the lead) was not checked by ear or recording, and the extra
+  pre-build check against a real sink was **skipped by the operator's choice** (2026-11-23). The overlap should be
+  near zero when LEAD matches the latency and about LEAD minus latency otherwise.
+
 ## Risks / Trade-offs
 
-- **[Risk] The headed numbers differ from the headless spike.** Hardware decode and an audio sink could make
-  `play()` on a pre-sought element slow; Chrome waits for the audio sink before it renders.
-  → Task 0.2 measures the spike headed in Chrome and Firefox before any wiring, and stops the change when the
-  two-element hand-over misses the gate.
+- **[Risk] The headed numbers differ from the headless spike.** Hardware decode and an audio sink make `play()` on a
+  pre-sought element slow; Chrome waits for the audio sink before it renders.
+  → Task 0.2 measured it headed. The plain hand-over missed the gate, so the early start (D4) replaced it, with a lead
+  measured per session.
+- **[Risk] The audio overlap and the real device.** During the lead both slots are unmuted and playing. The null sink
+  has no hardware clock, and no check was made against a real sink (skipped by the operator's choice, 2026-11-23). A
+  Bluetooth sink has a larger start-up latency than the clamp's 250 ms may cover, and a wrong lead means a short
+  skip or a short stall at the boundary, or an audible overlap.
+  → LEAD is calibrated at every hand-over and reset on `devicechange`; 3.1 records its observed values.
 - **[Risk] The end is noticed late.** `onFrame` acts only on a presented frame. The probe saw the end noticed by
   `ended`, 30 to 53 ms after the last frame in Chromium.
   → The hand-over also acts when the presented frame is past the clip's last kept frame. Task 2.2 records how often
