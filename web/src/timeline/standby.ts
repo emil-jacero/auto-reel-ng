@@ -56,7 +56,10 @@ function sameTarget(a: Target, b: Target): boolean {
 /**
  * Points the standby at `target` (null: nothing to hold). The same target at the same
  * address leaves it as it is; any other re-points the slot, which loads again (also while
- * it was loading, seeking or started).
+ * it was loading, seeking or started). `loading` always means the hook REASSIGNS the
+ * slot's src (and calls `load()`), even for the same address with a new in-point: leaving
+ * `loading` needs a fresh `loadedmetadata`, which a bare seek of an element that already
+ * holds the address would never fire.
  */
 export function standbyAim(s: Standby, target: Target | null, address: string): Standby {
   if (target === null) {

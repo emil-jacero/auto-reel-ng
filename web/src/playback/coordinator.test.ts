@@ -8,7 +8,7 @@ import {
   pauseOthers,
   watchOtherStarts,
 } from './coordinator.ts'
-import type { VideoRoot } from './coordinator.ts'
+import type { PausableVideo, VideoRoot } from './coordinator.ts'
 
 /*
  * One video plays at a time on the event page (`coordinator.ts`), run by `npm test` with
@@ -47,8 +47,17 @@ class FakeRoot implements VideoRoot {
   isVideo(target: EventTarget | null): target is FakeVideo {
     return target instanceof FakeVideo
   }
-  video(): FakeVideo {
+  /** Videos of one player: by group id. */
+  groups = new Map<FakeVideo, string>()
+  samePlayer(a: PausableVideo, b: PausableVideo): boolean {
+    const g = this.groups.get(a as FakeVideo)
+    return g !== undefined && g === this.groups.get(b as FakeVideo)
+  }
+  video(group?: string): FakeVideo {
     const video = new FakeVideo()
+    if (group !== undefined) {
+      this.groups.set(video, group)
+    }
     this.all.push(video)
     return video
   }
@@ -259,15 +268,39 @@ describe('watchOtherStarts', () => {
   })
 })
 
-describe('keepOneVideoPlaying with two own slots', () => {
-  it('is unchanged: a start still pauses every other playing video', () => {
+describe('keepOneVideoPlaying with two slots of one player', () => {
+  it('a slot started during the lead leaves the other slot playing, and a third video paused', () => {
+    const root = rooted()
+    const [s, t] = [root.video('timeline'), root.video('timeline')]
+    const other = root.video()
+    keepOneVideoPlaying(root)
+    s.start(root)
+    other.paused = false
+    t.start(root)
+    assert.deepEqual(s.calls, [])
+    assert.deepEqual(t.calls, [])
+    assert.deepEqual(other.calls, ['pause'])
+  })
+
+  it('a video of a different player still pauses both slots', () => {
+    const root = rooted()
+    const [s, t] = [root.video('timeline'), root.video('timeline')]
+    const movie = root.video('movie')
+    keepOneVideoPlaying(root)
+    s.start(root)
+    t.start(root)
+    movie.start(root)
+    assert.deepEqual(s.calls, ['pause'])
+    assert.deepEqual(t.calls, ['pause'])
+  })
+
+  it('videos with no player group are never the same player', () => {
     const root = rooted()
     const [a, b] = [root.video(), root.video()]
     keepOneVideoPlaying(root)
     a.start(root)
     b.start(root)
     assert.deepEqual(a.calls, ['pause'])
-    assert.deepEqual(b.calls, [])
   })
 })
 

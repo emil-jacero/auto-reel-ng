@@ -15,10 +15,18 @@
 /** What this module needs of a video. */
 export type PausableVideo = { readonly paused: boolean; pause(): void }
 
-/** Pauses each video that plays and is not `started`. */
-export function pauseOthers(started: unknown, videos: Iterable<PausableVideo>): void {
+/**
+ * Pauses each video that plays and is not `started`. `samePlayer` (optional) names the
+ * videos that form one player with `started` (the Timeline's two slots): those are left
+ * alone, since the player runs its own hand-over between them.
+ */
+export function pauseOthers(
+  started: unknown,
+  videos: Iterable<PausableVideo>,
+  samePlayer?: (video: PausableVideo) => boolean,
+): void {
   for (const video of videos) {
-    if (video !== started && !video.paused) {
+    if (video !== started && !video.paused && !samePlayer?.(video)) {
       video.pause()
     }
   }
@@ -32,6 +40,8 @@ export type VideoRoot = {
   videos(): Iterable<PausableVideo>
   /** Whether the event's target is one of its videos. */
   isVideo(target: EventTarget | null): target is EventTarget & PausableVideo
+  /** Whether two videos are slots of one player (the Timeline's shown and standby). */
+  samePlayer(a: PausableVideo, b: PausableVideo): boolean
 }
 
 /** Starts keeping one video playing under `root`; returns the remover. */
@@ -40,7 +50,8 @@ export function keepOneVideoPlaying(root: VideoRoot): () => void {
     // The event is queued: a video that has been paused since it was started (a start and a
     // pause in one task) is not playing, and starts nothing.
     if (root.isVideo(event.target) && !event.target.paused) {
-      pauseOthers(event.target, root.videos())
+      const started = event.target
+      pauseOthers(started, root.videos(), (video) => root.samePlayer(started, video))
     }
   }
   root.addEventListener('play', onPlay, true)
@@ -57,6 +68,11 @@ export function documentRoot(document: Document): VideoRoot {
     videos: () => document.querySelectorAll('video'),
     isVideo: (target): target is EventTarget & PausableVideo =>
       target instanceof HTMLVideoElement,
+    // slots of one player carry the same `data-player` marker on a common ancestor
+    samePlayer: (a, b) => {
+      const pa = a instanceof Element ? a.closest('[data-player]') : null
+      return pa !== null && pa === (b instanceof Element ? b.closest('[data-player]') : null)
+    },
   }
 }
 
