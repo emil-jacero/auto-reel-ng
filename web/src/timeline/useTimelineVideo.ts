@@ -256,6 +256,7 @@ export function useTimelineVideo({
   )
 
   const settleRef = useRef<() => void>(() => undefined)
+  const swapRef = useRef<(run: LeadRun) => void>(() => undefined)
   const handOverRef = useRef<() => void>(() => undefined)
   // What the hand-over needs of a clip: its length and its spans (its kept start, `handOverMs`).
   const handOverOf = useCallback((clip: number) => {
@@ -367,7 +368,9 @@ export function useTimelineVideo({
       const clip = clipsRef.current[run.want.clip]
       const target = clip === undefined ? 0 : seekSeconds(run.want.ms, clip.facts.fps)
       if (Math.abs(video.currentTime * 1000 - run.want.ms) < 1 || video.currentTime >= target) {
-        queueMicrotask(() => settleRef.current())
+        // Already at the first kept frame: swap directly. A settle here would mark a seek of the
+        // coalescer as done while it is still in flight.
+        swapRef.current(run)
       } else {
         video.currentTime = target
       }
@@ -647,6 +650,9 @@ export function useTimelineVideo({
     [slotRefs],
   )
   const armRef = useRef<() => void>(() => undefined)
+  useEffect(() => {
+    swapRef.current = swap
+  }, [swap])
 
   /**
    * Watch the incoming slot's presented frames from its `play()`: the first one newer than the
@@ -1111,6 +1117,11 @@ export function useTimelineVideo({
       if (shownEl() !== video || !wantPlay.current || video.paused) {
         return
       }
+      if (windowOpen(leadRun.current)) {
+        // The pre-roll of the incoming slot is not the playhead's clip: keep waiting for the swap.
+        arm()
+        return
+      }
       const clip = loadedClip.current
       if (!swapping.current && clip !== null && !coalescer.busy()) {
         const c = clipsRef.current[clip]
@@ -1231,7 +1242,8 @@ export function useTimelineVideo({
           ownPause.current[slot] = false // a pause that raised no event leaves nothing behind
         },
         onPlaying() {
-          if (isShown()) {
+          // While the swap is pending the incoming frames are pre-roll: the swap arms the loop itself.
+          if (isShown() && !windowOpen(leadRun.current)) {
             arm()
           }
         },
