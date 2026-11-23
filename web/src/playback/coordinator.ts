@@ -60,10 +60,18 @@ export function documentRoot(document: Document): VideoRoot {
   }
 }
 
-/** Whether a video other than `self` is playing (the Timeline asks before it resumes by itself). */
-export function anotherPlays(self: unknown, videos: Iterable<PausableVideo>): boolean {
+/**
+ * Whether a video that is not `own` is playing (the Timeline asks before it resumes by
+ * itself). `own` says which videos belong to the asking player: the Timeline has two slots
+ * (change `seamless-playback`), and one that plays while the other does too (the lead of
+ * an early start) is the player's own, not "another". A paused video never counts.
+ */
+export function anotherPlays(
+  own: (video: PausableVideo) => boolean,
+  videos: Iterable<PausableVideo>,
+): boolean {
   for (const video of videos) {
-    if (video !== self && !video.paused) {
+    if (!own(video) && !video.paused) {
       return true
     }
   }
@@ -71,17 +79,17 @@ export function anotherPlays(self: unknown, videos: Iterable<PausableVideo>): bo
 }
 
 /**
- * Calls `onOther` whenever a video other than `self()` starts playing. The Timeline uses it
+ * Calls `onOther` whenever a video that is not `own` starts playing. The Timeline uses it
  * to drop its claim on a Play that is still loading: the video started after the press is
- * the last start, and wins.
+ * the last start, and wins. The player's own starts, of either slot, call nothing.
  */
 export function watchOtherStarts(
   root: VideoRoot,
-  self: () => unknown,
+  own: (video: unknown) => boolean,
   onOther: () => void,
 ): () => void {
   const onPlay = (event: Event) => {
-    if (root.isVideo(event.target) && event.target !== self()) {
+    if (root.isVideo(event.target) && !own(event.target)) {
       onOther()
     }
   }

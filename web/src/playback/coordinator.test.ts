@@ -188,14 +188,14 @@ describe('anotherPlays', () => {
     const root = rooted()
     const self = root.video()
     self.paused = false
-    assert.equal(anotherPlays(self, root.all), false)
+    assert.equal(anotherPlays((v) => v === self, root.all), false)
   })
 
   it('is true with one other playing', () => {
     const root = rooted()
     const [self, other] = [root.video(), root.video()]
     other.paused = false
-    assert.equal(anotherPlays(self, root.all), true)
+    assert.equal(anotherPlays((v) => v === self, root.all), true)
   })
 
   it('is false when the others are paused', () => {
@@ -203,7 +203,29 @@ describe('anotherPlays', () => {
     const [self, other] = [root.video(), root.video()]
     self.paused = false
     assert.equal(other.paused, true)
-    assert.equal(anotherPlays(self, root.all), false)
+    assert.equal(anotherPlays((v) => v === self, root.all), false)
+  })
+
+  it('does not count a paused second slot of the same player', () => {
+    const root = rooted()
+    const [a, b] = [root.video(), root.video()]
+    a.paused = false
+    assert.equal(anotherPlays((v) => v === a || v === b, root.all), false)
+  })
+
+  it('does not count a second own slot that plays while the first plays (the lead)', () => {
+    const root = rooted()
+    const [a, b] = [root.video(), root.video()]
+    a.paused = false
+    b.paused = false
+    assert.equal(anotherPlays((v) => v === a || v === b, root.all), false)
+  })
+
+  it('counts a third video that plays beside two own slots', () => {
+    const root = rooted()
+    const [a, b, third] = [root.video(), root.video(), root.video()]
+    third.paused = false
+    assert.equal(anotherPlays((v) => v === a || v === b, root.all), true)
   })
 })
 
@@ -212,7 +234,7 @@ describe('watchOtherStarts', () => {
     const root = rooted()
     const [self, other] = [root.video(), root.video()]
     let heard = 0
-    const stop = watchOtherStarts(root, () => self, () => (heard += 1))
+    const stop = watchOtherStarts(root, (v) => v === self, () => (heard += 1))
     self.start(root)
     assert.equal(heard, 0)
     root.dispatch(new EventTarget())
@@ -222,6 +244,30 @@ describe('watchOtherStarts', () => {
     stop()
     other.start(root)
     assert.equal(heard, 1)
+  })
+
+  it("does not call onOther for either of the player's own slots, but does for a third video", () => {
+    const root = rooted()
+    const [a, b, third] = [root.video(), root.video(), root.video()]
+    let heard = 0
+    watchOtherStarts(root, (v) => v === a || v === b, () => (heard += 1))
+    a.start(root)
+    b.start(root)
+    assert.equal(heard, 0)
+    third.start(root)
+    assert.equal(heard, 1)
+  })
+})
+
+describe('keepOneVideoPlaying with two own slots', () => {
+  it('is unchanged: a start still pauses every other playing video', () => {
+    const root = rooted()
+    const [a, b] = [root.video(), root.video()]
+    keepOneVideoPlaying(root)
+    a.start(root)
+    b.start(root)
+    assert.deepEqual(a.calls, ['pause'])
+    assert.deepEqual(b.calls, [])
   })
 })
 

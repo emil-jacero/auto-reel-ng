@@ -35,7 +35,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
 
 ## 1. Rules (web/src/timeline, web/src/playback)
 
-- [ ] 1.1 Add `timeline/standby.ts` (design D2): `standbyTarget`, the `Standby` states with `standbyStep`, and
+- [x] 1.1 Add `timeline/standby.ts` (design D2): `standbyTarget`, the `Standby` states with `standbyStep`, and
   `atBoundary`; and `timeline/lead.ts` (design D4): a pure calibrator (LEAD and pre-roll P) and the early-start
   timing helper. Verify
   with `standby.test.ts` and `lead.test.ts`. `standby.test.ts` must cover:
@@ -61,7 +61,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - the timing helper: given a frame clock (callback time minus media time, as a median over the last second), S's
     kept end and the lead, it returns both `startAt` and `decideAt`; a start time already past (start at once), a
     lead longer than the time left, and `decideAt` one frame interval before the kept end.
-- [ ] 1.2 Give `anotherPlays` and `watchOtherStarts` in `playback/coordinator.ts` an `own` predicate (design D5).
+- [x] 1.2 Give `anotherPlays` and `watchOtherStarts` in `playback/coordinator.ts` an `own` predicate (design D5).
   Verify with `coordinator.test.ts`, which must check that:
   - a paused second element of the same player is not "another", and neither is a second own element that plays
     while the first plays (the lead);
