@@ -237,8 +237,11 @@ capturing `play` listener on the document pauses every other playing `<video>` o
 player claims or releases anything, so the Movie section's player, a clip's player in the read
 view, a clip's preview in Edit mode and the Timeline are covered without being named, and so is
 a player added later. It only pauses: nothing is closed, replaced, restarted or seeked, and
-nothing is announced. The Timeline's one extra rule: when another video starts while its file
-changes at a clip boundary, it stays paused (`resumeOrYield` in `timeline/follow.ts`).
+nothing is announced. The Timeline's two slots (the shown video and its standby, `seamless-playback`) are one
+player: the standby starts during the lead before a clip boundary without pausing the shown slot, and neither
+pauses the other (`samePlayer`, `data-player`); a third video still pauses both. The Timeline's one extra rule: when
+another video starts while its file changes at a clip boundary, it stays paused (`resumeOrYield` in
+`timeline/follow.ts`).
 
 **Which file plays** (GUI v2, **D-16**/**D-21**, `preview/source.ts`): the clip's **preview
 copy** when the event detail's `proxy` says `ready` with a usable `facts.duration`, else the

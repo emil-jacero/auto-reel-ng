@@ -981,6 +981,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     that make it. The bin is one plain list of every clip (the player above it, the clip's information under it), selected
     as the track is and opening the clip menu; the marks, the chapter sections, the handles and the row buttons are
     gone, and `@dnd-kit` left with them; no API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
+    **`seamless-playback` is built** (web only; D-20): the Timeline's two slots play across a plain clip boundary with
+    a measured, operator-accepted gate (D-20, research §6.10); leading cuts and the first-frame skip stay known
+    limitations; no API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -1394,7 +1397,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     (`playback/exclusive.ts`). A `proxy` job is never shown as a render: `jobs/kinds.ts` (`job-kind`) keeps the
     render region, list rows and header count to renders, and the Prepare state shows the proxy job in its own words
     ("Preparing proxies", "Proxy progress"). What stays: the approval and dismissal of suggestions on Edit mode's draft
-    (the lane's `decide`), a second preloaded `<video>` for seamless boundaries, undo.
+    (the lane's `decide`), undo. (The second preloaded `<video>` for seamless boundaries is built: `seamless-playback`, D-20.)
   - **Measured on the shipped proxy** (Chrome 154.0.8037.92 and Firefox 155.0, ten real clips, one from each archive
     class, proxies made by the Prepare button and a real worker). **Quiet host** (the review's re-run, load average
     0.5 to 2.1 on 16 cores, two runs each): scrub, median frames per second over 50 sweeps of 2 s (gate: 30): Chrome
@@ -1612,6 +1615,30 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     unavailable, with the reason in words, while a save or a move of marked clips is pending, an open clip preview holds the page's video,
     or the video has no decoded frame. The playhead can rest in a black title card since `timeline-plays-cards`; there
     the button is unavailable, with the reason in words (the picture is the card's, not a frame of a clip). No timeline library, no new runtime dependency.
+  - **Amended 2026-11-23, change `seamless-playback`: the Timeline plays across a clip boundary on two slots.** The
+    Timeline renders two `<video>` slots in one stage (one player for the coordinator: `data-player`, `samePlayer`), one
+    shown and one **standby**. The standby (`timeline/standby.ts`, pure) loads the next clip's proxy while Play holds,
+    is sought to the first kept frame less a learned pre-roll P, and starts **early**, unmuted and invisible
+    (`opacity: 0`), one learned LEAD before the playing clip's last kept frame (`timeline/lead.ts`; LEAD is the median of
+    the last 9 hand-overs, clamped to [0, 250] ms, P likewise [0, 40] ms and to the in-point, both reset on
+    `devicechange`). The hand-over swaps the slots at the decision, just before the kept end; `onFrame` and `ended` are
+    backstops. A cancel during the lead (pause, scrub, seek, a yield) pauses the standby and seeks it back, and Play
+    meanwhile waits for `seeked`. **Plain boundaries only:** a black title card keeps its hand-over, and the flash
+    between clips is now accepted only for moves of the playhead (a scrub, a press, a key, Previous or Next clip), not
+    when Play goes on. Use as poster and the frame-ready check read the shown slot (`shown()`, `onSwap`). **Measured
+    gate** (headed, null sink, sound on, Firefox 160 and Chrome 158, `2024-06-27 - Grillning med grannar`, research
+    §6.10), **accepted by the operator on 2026-11-23** after watching the build in Firefox ("not that bad actually")
+    though it misses the first gate: IN = 0 in Firefox, lost p90 7.0 ms, hold p50 / p90 / max 51 / 83 / 134 ms (the first
+    gate allowed 70 / 100), p10 lost -41.5 ms (floor -40); Chrome meets every term of the first gate. Against the
+    single element of the same session (Firefox lost about 220 ms, hold p90 about 251 ms) lost p90 is under half in
+    both browsers and hold p90 under half in Firefox (Chrome 50.1 against 83.4 ms). **Known limitations:** leading-cut
+    boundaries fail the first gate in both browsers (Firefox lost p90 29.8, hold p90 117; Chrome 20.5 and 83.5), and the
+    learned P correlates with the worse holds (follow-up: drop P); the first presented frame of the incoming clip is 2 to
+    3 frames (up to 5) after its first kept frame; Bluetooth and real-sink latency were not measured and the audio
+    overlap during the lead was not checked; the quiet re-read route of "The clips shrink under the playhead" is
+    unverified (its layout path passes through Ignore clip). Bundle, `npm run build` on `main` and on this change: JS
+    707,725 to 720,032 bytes (226,681 to 230,587 gzip -9, +3.9 KB), CSS 107,850 to 107,968 bytes (19,746 to 19,822 gzip
+    -9); no package added. Scrub, frame step, card hand-over and readout gates pass.
   - **The Timeline shows and plays the title cards (`timeline-plays-cards`, 2026-10-04).** The first use of the card blocks
     said, verbatim, "It appears I cannot actually see the title cards, or even play them. The timeline selector just skips past
     them", repeating the requirement of 2026-10-03, "I want the title cards to be visible in the editor", and reversing the
@@ -1619,7 +1646,7 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     the `<video>` (`object-fit: contain`, pointer-inert, `aria-hidden`; the readout and the slider carry the words). A black
     card's layer is an opaque black `<div>` and only the image fades in it, so the clip loading behind it never shows; a video
     card's layer is transparent and the image is laid over the playing video for its window (from the start of the first kept
-    span for the card's width). No second `<video>`, no canvas, no pre-rendered clip. **The card clock** (`play.ts`, pure, reads
+    span for the card's width). No second `<video>` for the card, no canvas, no pre-rendered clip (`seamless-playback` since built a standby `<video>` for plain clip boundaries; it does not cross black cards). **The card clock** (`play.ts`, pure, reads
     no clock) is elapsed real time from `performance.now()` driven by `requestAnimationFrame`, never a count of frames, so a
     slow frame does not stretch a card; a hidden page, Pause, another player's start and a scrub stop it and Play goes on
     from the same place. **The hand-over:** while a card lasts, the hook loads and seeks the card's anchor clip at its first
