@@ -43,12 +43,12 @@ describe('P', () => {
     assert.equal(preRollOf(FRESH, 1000), 0)
   })
 
-  it('a Chrome-like series (errors near 0) keeps P at 0', () => {
+  it('a Chrome-like series (errors near 0) keeps P within about a millisecond of 0', () => {
     let c = FRESH
     for (const error of [0, 2, -1, 1, 0, -2, 3, 0, 1, -1]) {
       c = need(c, error, preRollOf(c, 1000))
     }
-    assert.ok(preRollOf(c, 1000) <= 1)
+    assert.equal(preRollOf(c, 1000), 0.5)
   })
 
   it('a Firefox-like series (about +28 ms) raises it', () => {

@@ -379,7 +379,7 @@ src/
 │   ├── ClipPreview.tsx   a clip's preview, in the bin's player or (read-only) on the event page: the video, controls, cut bar, notes
 │   └── preview.css       the preview and the cut bar
 ├── playback/
-│   ├── coordinator.ts    one playing video per page: a started video pauses the others; installed in main.tsx (pure, + coordinator.test.ts)
+│   ├── coordinator.ts    one playing video per page: a started video pauses the others unless it is of the same player (`samePlayer`, the `data-player` stage: the Timeline's two slots); installed in main.tsx (pure, + coordinator.test.ts)
 ├── timeline/             the event page's Timeline (GUI v2, D-20): read only in the read view, trim handles in Edit mode; the pure modules have tests under npm test
 │   ├── model.ts          time and pixels, zoom, windowing, cut spans, trim limits, snapping (whole ms; + model.test.ts, trim.test.ts)
 │   ├── layout.ts         which clips, when a proxy is ready, chapter bands, drawn cuts, movie length, filmstrip tiles (pure)
@@ -398,7 +398,9 @@ src/
 │   ├── TimelineSection.tsx  the section: Open / Close, then notes, Prepare or the track by what the proxies allow
 │   ├── Prepare.tsx       the Prepare state and the proxy job's behaviour (usePrepare)
 │   ├── Timeline.tsx      the open Timeline: the picture, transport, zoom and the track; Track.tsx, Filmstrip.tsx, Playhead.tsx
-│   ├── useTimelineVideo.ts  the one <video>: src swaps, coalesced seeks, Play through cuts and clips
+│   ├── useTimelineVideo.ts  the shown and standby <video> slots: src swaps, coalesced seeks, Play through cuts and clips, the early-start hand-over
+│   ├── standby.ts        which clip the standby holds and its state machine (pure, + standby.test.ts)
+│   ├── lead.ts           the early start's LEAD and pre-roll calibration (pure, + lead.test.ts)
 │   ├── useVisibleRange.ts   the track scroller's range, once per frame
 │   ├── overlays/         the analysis lane (`timeline-overlays`): suggestions under their clips; approval, dismissal and restore in Edit mode (`timeline-overlay-decisions`)
 │   │   ├── suggestions.ts       a suggestion's state from the cuts, the approval check, the decisions, the A / R keys, stacking over the track, roving order, words (pure, + suggestions.test.ts)

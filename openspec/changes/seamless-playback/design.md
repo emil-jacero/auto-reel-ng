@@ -132,7 +132,7 @@ already running when S's last kept frame has had its time.
   - **Why two numbers.** A single LEAD fed with `play()` to first frame cannot align Firefox. Its clock starts at
     `play()` and its frames arrive late, so P = 0 runs 26 to 30 ms ahead whatever LEAD is (`early-24-0`, `early-20-0`:
     research §6.7). The pre-roll puts the frames the clock skips before the first kept frame. Chrome's error is about
-    0, so P stays 0 there (a pre-roll costs it 45 to 136 ms, §6.7).
+    0, so P stays within about a millisecond of 0 there (a pre-roll costs it 45 to 136 ms, §6.7).
 - **Arming.** The timing helper (`lead.ts`) takes S's frame clock (median of callback time minus `mediaTime` over the
   last second), S's kept end and LEAD, and returns **two** times: `startAt`, S's kept end minus LEAD, and `decideAt`,
   the predicted time of S's last kept frame (the kept end minus one frame interval). The hook sets one timer for
@@ -155,7 +155,7 @@ already running when S's last kept frame has had its time.
 - **Cancel during the lead.** Between the start and the swap, a pause, a scrub, a seek, Previous/Next clip, a yield
   (D5) or an event reload pauses T, sets its `currentTime` back to its pre-sought position (the first kept frame less P), and sends
   `cancelled` (D2). The standby is `seeking` until that seek lands, and `atBoundary` answers `wait` meanwhile. S
-  stays shown, and the Timeline goes on as that action says. A cancelled start gives no calibrator sample.
+  stays shown, and the Timeline goes on as that action says. A cancelled start gives no P sample and no swap sample; a LEAD sample taken on the standby's first running frame before the cancel is kept (it is a real start-up latency).
 - **`wait`:** S is paused (its own pause) and holds its last frame, and a flag like `handOverWait` is set. The
   standby's `seeked` runs the hand-over: `T.play()` now, **sending `{type:'started', playAt}` as for the early start**
   (valid from `ready`, after `seeked`), so a pause or scrub between that `play()` and the swap sends `cancelled` from
@@ -336,7 +336,7 @@ adopted; this amendment, with its P calibration, is for the operator to confirm 
   → The decision is timed on the frame clock (D4), with `onFrame` and `ended` as backstops. Task 2.2 records how
   often a backstop is what fires.
 - **[Risk] A second decoder is kept while playing**, with a third while the card bridge or a preview acts. Two 540p
-  H.264 decoders are small. The standby exists only while playing, and `held` releases both.
+  H.264 decoders are small. The standby holds a source only once the Timeline has played, and `held` releases both.
 - **[Trade-off] A short next clip** (less play than its load) or a slow proxy falls back to `wait`, or to today's
   load. It is never slower than today.
 - **[Risk] Layout.** Both slots are now positioned absolutely. 2.1 takes screenshots of the stacked page and of the

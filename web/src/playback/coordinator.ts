@@ -58,6 +58,17 @@ export function keepOneVideoPlaying(root: VideoRoot): () => void {
   return () => root.removeEventListener('play', onPlay, true)
 }
 
+const PLAYER_SELECTOR = '[data-player]'
+
+/** Something that finds its nearest ancestor matching a selector (an `Element`). */
+export type Closest = { closest(selector: string): unknown }
+
+/** Whether `a` and `b` sit under the same marked ancestor; no ancestor on either side is never the same. */
+export function sameAncestor(a: Closest | null, b: Closest | null, selector: string): boolean {
+  const pa = a === null ? null : a.closest(selector)
+  return pa !== null && pa !== undefined && pa === (b === null ? null : b.closest(selector))
+}
+
 /** The page's own root: its `document`, whose `<video>` elements are the videos. */
 export function documentRoot(document: Document): VideoRoot {
   return {
@@ -69,10 +80,12 @@ export function documentRoot(document: Document): VideoRoot {
     isVideo: (target): target is EventTarget & PausableVideo =>
       target instanceof HTMLVideoElement,
     // slots of one player carry the same `data-player` marker on a common ancestor
-    samePlayer: (a, b) => {
-      const pa = a instanceof Element ? a.closest('[data-player]') : null
-      return pa !== null && pa === (b instanceof Element ? b.closest('[data-player]') : null)
-    },
+    samePlayer: (a, b) =>
+      sameAncestor(
+        a instanceof Element ? a : null,
+        b instanceof Element ? b : null,
+        PLAYER_SELECTOR,
+      ),
   }
 }
 

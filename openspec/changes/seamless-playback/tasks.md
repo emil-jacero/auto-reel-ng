@@ -43,7 +43,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     black-card gap (null), and at the last clip (null);
   - every transition, including an error and a re-target while loading;
   - `lead.test.ts`: the P law is closed-loop (`needed = max(0, P_used + error)`, negative errors included, median of
-    9, clamped [0, 40] and to IN). Cases: a fixed Chrome-like series (P stays 0); a **closed-loop Firefox simulation**
+    9, clamped [0, 40] and to IN). Cases: a fixed Chrome-like series (P stays within about a millisecond of 0); a **closed-loop Firefox simulation**
     where the browser's skip is `28 - P_applied`: P converges to about 28 and stays within one frame of it over 20 or
     more hand-overs; an **overshoot** case (P starts above the need) where P comes back down; IN = 0 gives no sample.
   - the wait path: `started` is sent by the wait path's `play()` too; `cancelled` during it, then `atBoundary`
@@ -57,7 +57,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     [0, 250] ms (a negative and a huge sample); P is 0 before any sample, the closed loop of D4
     (needed = max(0, P_used + error), negative errors included; at P_used = 0 a negative error samples 0), clamped to
     [0, 40] ms and to the incoming in-point (0 at IN = 0); the
-    reset of both on `devicechange`; a Chrome-like series (errors near 0) keeps P at 0, a Firefox-like one (about
+    reset of both on `devicechange`; a Chrome-like series (errors near 0) keeps P within about a millisecond of 0 (0.5 on the fixed series), a Firefox-like one (about
     +28 ms) raises it;
   - the timing helper: given a frame clock (callback time minus media time, as a median over the last second), S's
     kept end and the lead, it returns both `startAt` and `decideAt`; a start time already past (start at once), a
@@ -135,7 +135,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     slack takes `startFrom`'s next-clip start and loads into the shown slot (2 to 3 blank samples), not the ready standby.
   - **Not exercised: "The clips shrink under the playhead"** (no quiet re-read of the clips could be triggered).
     Explicitly unverified.
-  - Every other scenario of both deltas passes in both browsers. Scrub, frame step, card hand-over and readout pass.
+  - Every other scenario of both deltas passes in both browsers, except the finger swipe (Chromium only, not run in Firefox). Scrub, frame step, card hand-over and readout pass.
   - Coverage gaps: the gate ran only IN = 0 clips, so P was 0 throughout and the pre-roll path was not measured headed;
     the readout ran on another event than the spec names (6.02 s clips); Chrome 158 and Firefox 160 ran (the spec floor
     for Chrome is 157, so 158 satisfies it).
