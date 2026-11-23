@@ -1293,19 +1293,32 @@ export function useTimeline({
     },
   })
   const stage = (
-    <div className="tl-stage" data-turned>
+    <div className="tl-stage" data-turned data-player>
       {held ? (
         <p className="tl-stage-held">{PREVIEW_OPEN}</p>
       ) : (
-        <video
-          ref={video.videoRef}
-          className="tl-video"
-          preload="auto"
-          playsInline
-          aria-hidden="true"
-          tabIndex={-1}
-          {...video.handlers}
-        />
+        <>
+          <video
+            ref={video.videoRef}
+            className="tl-video"
+            preload="auto"
+            playsInline
+            aria-hidden="true"
+            tabIndex={-1}
+            {...video.handlers}
+          />
+          {/* The standby slot (seamless-playback D1): rendered, never seen; 2.2 loads and hands over to it. */}
+          <video
+            ref={video.standbyRef}
+            className="tl-video"
+            data-standby=""
+            preload="auto"
+            playsInline
+            muted
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        </>
       )}
       {!held && (
         <CardLayer

@@ -34,6 +34,8 @@ import { createCoalescer } from './scrub'
 
 export type TimelineVideo = {
   videoRef: React.RefObject<HTMLVideoElement | null>
+  /** The second slot of the stage (seamless-playback D1): no `src` until the standby loads (2.2). */
+  standbyRef: React.RefObject<HTMLVideoElement | null>
   playing: boolean
   note: (PlaybackNote | Notice) | null
   /** Put the playhead at `pos` and show it (a click, a key, a scrub move). */
@@ -94,6 +96,7 @@ export function useTimelineVideo({
   held?: boolean
 }): TimelineVideo {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const standbyRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [note, setNote] = useState<(PlaybackNote | Notice) | null>(null)
 
@@ -694,5 +697,5 @@ export function useTimelineVideo({
     }
   }, [held, play])
 
-  return { videoRef, playing, note, seekTo, scrubStart, scrubEnd, toggle, handlers }
+  return { videoRef, standbyRef, playing, note, seekTo, scrubStart, scrubEnd, toggle, handlers }
 }
