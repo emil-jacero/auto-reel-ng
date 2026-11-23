@@ -282,3 +282,217 @@ no hold over 100 ms. Evaluated on all runs, since Chrome has no valid runs (its 
   and not in the one with `duration` as the end.
 - The two-element spike unmutes the standby at `play()` and mutes the freed slot, as in §3. It does not try to start
   the standby's audio before the boundary. That was outside this task.
+
+### 6.6 Chrome with a null audio sink
+
+§6.5 said Chrome's 150 ms `play()` to first-frame residual might be an artifact of having no audio sink at all. This
+subsection reruns Chrome with a real audio path that cannot reach the speakers.
+
+**Setup.**
+- A PipeWire null sink, `pactl load-module module-null-sink sink_name=claude_null` (module 536870916). The default sink
+  was never set by the run, and the module was unloaded at the end (`pactl list short sinks` no longer lists it).
+- Chrome 158.0.8127.36 (Flatpak), a fresh profile, headed on the host display, the same flags as §6.1 but **with** the
+  pulseaudio socket and `flatpak run --env=PULSE_SINK=claude_null com.google.Chrome ...`. Two configurations:
+  `--mute-audio` kept as a second guard, and **no** `--mute-audio`.
+- A watchdog polled `pactl --format=json list sink-inputs` every 0.2 s and was set to kill Chrome if any Chrome stream
+  was on another sink. It never fired: all 68 logged snapshots, in both configurations, show Chrome's stream on
+  `claude_null` (not muted by the stream flag, corked and uncorked as the elements played). With `--mute-audio` the
+  stream is still created, so that flag does not remove the audio path on this build. Audio-less proxies (`-na`)
+  create no stream.
+- Same scenario, definitions and scripts as §6.1 to §6.4: the app probe 7 runs (21 boundaries), the spike 3 runs of
+  9 boundaries (27 per case). Every run was `visibilityState: visible`. The app was only read, with writes refused in
+  the page (three refused `title-card/preview` POSTs per run). Raw results and the sink log:
+  `results/spike2/` in the session scratchpad (`measure/`), not in the repo.
+
+**Results** (ms; p50 / p90, hold also max).
+
+| Case | Sink | Steady p50 | Longest hold p50 / p90 / max | Lost p50 / p90 | Lost, `duration` end, p50 / p90 |
+|---|---|---|---|---|---|
+| today, in the app (n = 21) | none (§6.2) | 66.7 | 150.1 / 150.1 / 150.2 | 235.9 / 240.6 | 195.9 / 200.6 |
+| today, in the app (n = 21) | null, `--mute-audio` | 50.0 | 83.2 / 83.4 / 83.4 | 142.9 / 147.7 | 102.9 / 107.7 |
+| today, in the app (n = 21) | null, unmuted | 50.0 | 66.7 / 89.5 / 93.9 | 141.3 / 146.0 | 101.3 / 106.0 |
+| spike, one element (n = 27) | none (§6.3) | 100.0 | 150.1 / 150.1 / 150.2 | 196.3 / 201.3 | |
+| spike, one element (n = 27) | null, `--mute-audio` | 50.1 | 66.7 / 66.7 / 66.8 | 105.1 / 110.4 | |
+| spike, one element (n = 27) | null, unmuted | 51.4 | 68.1 / 71.7 / 87.0 | 105.9 / 109.0 | |
+| spike, two, `opacity: 0` (n = 27) | none (§6.3) | 100.1 | 150.1 / 166.8 / 166.9 | 166.7 / 166.8 | |
+| spike, two, `opacity: 0` (n = 27) | null, `--mute-audio` | 83.3 | 66.7 / 66.8 / 83.4 | 72.6 / 86.2 | |
+| spike, two, `opacity: 0` (n = 27) | null, unmuted | 67.6 | 66.7 / 69.5 / 69.7 | 70.8 / 74.5 | |
+
+Steps of the two-element hand-over, p50: `play()` to `playing` and to the first frame **66.4 ms** (49.6 to 83.2) with
+`--mute-audio`, **66.5 ms** (49.9 to 69.3) unmuted, against 149.9 ms with no sink; last frame to the incoming first
+frame 66.7 ms in both, against 150.1 ms. In the one-element spike `play()` to `playing` is 0.1 ms and the cost sits in
+the seek (7.8 ms), `loadedmetadata` (11 to 12 ms) and the wait for the first frame (last frame to first frame 33 to
+37 ms).
+
+**Against the gate** (all runs, as in §6.4; no run met the validity rule, steady is at most two frame intervals).
+
+| Case (null sink, unmuted) | p90 lost | p90 hold vs steady + 20 | Max hold | Meets? |
+|---|---|---|---|---|
+| today, in the app | 146.0: no | 89.5 vs 70.0: no | 93.9: yes | **no** |
+| one element (spike) | 109.0: no | 71.7 vs 71.4: no | 87.0: yes | **no** |
+| two elements, `opacity: 0` | 74.5: no | 69.5 vs 87.6: yes | 69.7: yes | **no** (lost) |
+
+With `--mute-audio` the outcome is the same: p90 lost 147.7, 110.4 and 86.2 ms, all above 20 ms; the hold and max-hold
+terms are met by the one-element and two-element spikes.
+
+**What this changes.**
+- **The 150 ms residual was partly a no-sink artifact.** With a sink that accepts the stream, `play()` to first frame
+  falls from about 150 ms to about 66 ms (the same 4-vsync quantum seen in the steady hold), and the two-element
+  p90 lost falls from 166.8 to 74.5 ms (86.2 ms muted). Today's app falls from 240.6 to 146.0 ms. The earlier numbers
+  overstated Chrome's loss for a user with audio.
+- **It is still not seamless.** The two-element hand-over keeps about 70 to 86 ms of lost time in Chrome with audio,
+  well over the 20 ms gate, and its two-element saving over today's single element is about 70 ms (p90 lost
+  146.0 to 74.5). The audio-less diagnostic (§6.4: 1.6 ms) says the remaining cost still comes with the audio track:
+  the audio renderer starts the standby's stream at `play()`, and the first frame waits for it.
+- **`--mute-audio` does not change the audio path** here (the stream exists, on the sink, and the numbers differ by
+  small amounts, within the spread between two runs of one configuration). It is not the cause of the residual.
+- Hence a plain "play the standby at the boundary" two-element swap does not satisfy the gate in Chrome. A design that
+  starts the standby's playback (audio included) before the boundary, or one that decouples audio from the video
+  swap, is what would be needed. That is outside this measurement.
+
+**Caveats.** The null sink has no hardware clock, so its latency model is not the operator's actual device. The
+operator's default sink at the end of the run was a Bluetooth sink that appeared during the session; Chrome was only
+ever routed to `claude_null` and nothing was moved. Chrome's presentation cadence caveats of §6.5 (50 fps on 60 Hz,
+dropped callbacks) apply unchanged, so the lost column is the robust one.
+
+### 6.7 Early standby start
+
+Today the standby's `play()` is called on the outgoing clip's last kept frame, and its first new frame comes after the
+play start-up (Firefox 160 about 24 ms, Chrome 66 ms with a sink and 150 ms without). This subsection starts the standby
+before the boundary so that its clock is already running when the outgoing clip ends.
+
+**Method.**
+- The §6.1 to §6.6 harness, with a new page (`spike3.html` in the session scratchpad `measure/`; analysis
+  `analyze3.py`). Two elements, the standby hidden with `opacity: 0`. 27 boundaries per case (3 runs of 9), every run
+  `visibilityState: visible` (Firefox and Chrome windows kept above with a KWin script, by pid, as in §6.1).
+- The incoming clip's first kept frame is a trimmed in-point, **IN = 0.100 s** (frame 5), so that the standby can be
+  pre-sought before it. (With IN = 0 a pre-seek "before the first kept frame" is impossible.) The outgoing clip's kept
+  end is 6.02 s; its last kept frame is 6.00.
+- Cases are named `early-L-P`: `play()` on the standby L ms before the outgoing's kept end (a timer from a median
+  `callback time - mediaTime` offset of the outgoing's frame callbacks, because Firefox reports only every other
+  frame), the standby pre-sought to IN - P. The outgoing pauses at its last kept frame (the decision, as before). The
+  swap is on the standby's first presented frame at or after IN, but not before the outgoing's last frame has had its
+  20 ms. With P = 0 the pre-sought frame is already presented, so the swap is at decision + 20 ms. `-mu`: the standby
+  is muted from `play()` to the swap and unmuted at the swap. Unmuted otherwise, as in §6.3.
+- L values: 20 (1 frame), 40 (2 frames), and the browser's measured `play()` to first frame p50 ("lat"): 24 (Firefox
+  160), 66 (Chrome, null sink, §6.6), 150 (Chrome, no sink, §6.3). `early-20-0` is the control: today's scheme with the
+  in-point pre-sought. `two-opacity` is §6.3's case, rerun in the same session.
+- Setups. Firefox 160.0.1 Flatpak, no audio socket, `media.volume_scale=0.0`. Chrome 158 Flatpak, `--mute-audio`, once
+  with no audio socket and once with `PULSE_SINK=claude_null` (a `module-null-sink` created and unloaded for the run;
+  the default sink was `alsa_output.usb-Razer...` before and after and was never touched; the module is gone).
+- Lost is reported two ways. **D7** (as §6: `currentTime` of the outgoing at the decision and of the incoming at +0.5 s)
+  and **frame clock** (the same formula, with both positions taken from the frame callbacks' `callback time -
+  mediaTime` median). In Firefox, `currentTime` of a playing element is stale by up to about 40 ms (a read at the
+  decision gave 5.96 when the frame on screen was about 6.00), which biases D7 lost low by 30 to 40 ms in the timer-based
+  cases. **Use the frame-clock column in Firefox.** In Chrome the two agree to about 10 ms.
+- **A negative lost is not good.** It means the standby's media clock ran ahead of what was shown, i.e. content at
+  the start of the incoming clip was skipped (a jump, and the audio ahead of the picture). The target is about 0.
+
+**Results** (ms, p90 unless stated; hold gate = steady p50 + 20; "meets" = lost frame-clock within 20 and no more
+than about 20 ahead, hold p90 within the gate, max hold at most 100).
+
+Firefox 160.0.1 (steady hold p50 40; the two-opacity baseline's steady is 66):
+
+| Case | Lost D7 | Lost frame clock (p50 / p90) | Hold p90 / max | Gate hold | Meets? |
+|---|---|---|---|---|---|
+| two-opacity (today's two-element swap) | 27.4 | 19.5 / 20.7 | 117.0 / 128.4 | 86.2 | no |
+| early-20-0 (control) | -56.0 | -26.8 / -25.8 | 60.3 / 61.0 | 60.1 | no (ahead, hold +0.2) |
+| **early-20-20** | -36.0 | -6.3 / -4.8 | **52.1 / 53.3** | 60.1 | **yes** |
+| early-40-40 | 9.1 | -6.7 / -5.2 | 72.8 / 73.6 | 60.1 | no (hold) |
+| early-24-24 | -32.5 | -10.2 / -8.0 | 74.6 / 85.6 | 60.1 | no (hold) |
+| early-24-0 | -57.3 | -29.8 / -28.2 | 59.3 / 60.0 | 60.1 | no (28 ms ahead) |
+| early-24-24-mu | -20.2 | -3.4 / -2.8 | 72.4 / 84.0 | 60.1 | no (hold) |
+| early-24-0-mu | -44.7 | -43.6 / -42.6 | 58.8 / 60.0 | 60.1 | no (43 ms ahead) |
+
+Chrome 158, no audio sink (L = lat = 150; steady p50 50):
+
+| Case | Lost D7 | Lost frame clock (p50 / p90) | Hold p90 / max | Gate hold | Meets? |
+|---|---|---|---|---|---|
+| two-opacity | 166.8 | 205.0 / 215.1 | 156.7 / 166.7 | 120.0 | no |
+| early-20-0 (control) | 116.4 | 113.4 / 114.7 | 134.3 / 134.8 | 70.1 | no |
+| early-20-20 | 136.4 | 153.4 / 156.7 | 283.3 / 283.3 | 70.1 | no |
+| early-40-40 | 113.7 | 136.7 / 140.0 | 250.1 / 250.1 | 70.1 | no |
+| early-150-150 | 93.4 | 116.7 / 116.8 | 183.3 / 183.4 | 70.1 | no |
+| **early-150-0** | -11.6 | -10.1 / 6.7 | **65.8 / 66.0** | 70.1 | **yes** |
+| early-150-150-mu | 50.8 | 46.7 / 58.0 | 183.3 / 183.4 | 70.1 | no |
+| early-150-0-mu | -54.2 | -46.7 / -46.6 | 65.7 / 66.1 | 70.1 | no (47 ms ahead) |
+
+Chrome 158, null sink `claude_null`, `--mute-audio` (L = lat = 66; steady p50 50, baseline 83):
+
+| Case | Lost D7 | Lost frame clock (p50 / p90) | Hold p90 / max | Gate hold | Meets? |
+|---|---|---|---|---|---|
+| two-opacity | 83.8 | 88.4 / 106.4 | 83.3 / 83.4 | 103.3 | no |
+| early-20-0 (control) | 35.1 | 26.7 / 34.7 | 70.7 / 71.0 | 70.1 | no |
+| early-20-20 | 53.4 | 50.0 / 57.4 | 283.3 / 283.4 | 70.1 | no |
+| early-40-40 | 54.1 | 46.7 / 60.0 | 250.1 / 250.1 | 70.1 | no |
+| early-66-66 | 57.3 | 46.6 / 60.1 | 266.7 / 266.7 | 70.1 | no |
+| **early-66-0** | -9.8 | -16.6 / -6.7 | **66.1 / 66.3** | 70.1 | **yes** |
+| early-66-66-mu | 53.2 | 40.1 / 46.0 | 266.7 / 266.7 | 70.1 | no |
+| early-66-0-mu | -23.4 | -33.3 / -24.0 | 66.1 / 66.3 | 70.1 | no (24 ms ahead) |
+
+**What the numbers say.**
+- **The literal scheme (pre-seek to first kept frame - L, `play()` L before the end) does not help.** The standby's clock
+  starts after its play latency, so pre-seeking L earlier just moves its first kept frame L later: Chrome 66-66, 150-150,
+  40-40 and 20-20 all lose 45 to 136 ms and hold 180 to 283 ms. In Firefox it is neutral to slightly worse (20-20 passes
+  at 24 ms latency only because one frame of pre-roll matches the 20 ms last frame; 40-40 and 24-24 skip 20 to 40 ms and
+  hold longer).
+- **What works is a different split: pre-seek the standby exactly to its first kept frame (P = 0), call `play()` about
+  the measured play latency before the outgoing's end, unmuted, and show the already presented pre-sought frame at the
+  boundary.** In Chrome that meets the gate in both audio setups (`early-66-0`, `early-150-0`: p90 lost -10 to 7 ms,
+  hold p90 66 ms against a 70 ms limit, max hold 66 ms, steady 50). It is the only variant that does.
+  - The lost time is linear in the mismatch, `lat - L`. Under-compensating (early-20-0 against a 66 or 150 ms latency)
+    leaves 27 and 114 ms of lost; over-compensating leaves the standby ahead (skipped content), which is what the muted
+    variant shows.
+  - **Muting the standby until the swap makes it worse.** A muted element has no audio start-up, so its clock runs
+    at once and is ahead by the whole `lat`: Chrome `-mu` runs 24 ms (null sink) and 47 ms (no sink) ahead, Firefox
+    24-0-mu 43 ms. The audio start-up is the cost being hidden, so it has to be paid before the boundary, with the
+    element unmuted. (Unmuting at the swap did not add a visible stall; hold is the same as unmuted.)
+  - **Firefox does not get a clean pass from the same recipe.** With P = 0 (early-24-0, early-20-0) its clock runs 26 to
+    30 ms ahead of the frames (its `play()` starts the clock at once, and the first frame is late). With P = 20,
+    L = 20 (one frame of pre-roll and `play()` on the last frame) it is aligned (lost -5 ms) and meets the gate. In
+    Firefox the earliest start is not needed: the best case equals today's `play()` time with a one-frame pre-seek.
+    The Firefox hold terms are close to the 40 ms frame-report resolution, so "meets" there is at the resolution
+    limit.
+- **Today's two-element swap, rerun here for comparison** (`two-opacity`), reproduces §6.3 and §6.6: Firefox p90 lost 21
+  (frame clock), hold p90 117; Chrome 84 (null sink) and 167 ms (no sink).
+- Needs the play latency up front. The recipe depends on knowing `play()` to first frame on this machine and audio
+  device (24 ms Firefox here, 66 ms Chrome with the null sink, 150 ms with no sink). A real device (a Bluetooth sink,
+  for one) has other values, and no run here measured a mismatch other than the ones in the tables. A calibration per
+  session (time the first standby `play()`) would be needed before this could be adopted, and it would still need
+  checking on the operator's real sink.
+
+**Overlap, duplicates and audio doubling.**
+- **Picture.** The standby stays `opacity: 0` until the swap and the outgoing is paused on its last kept frame at the
+  decision, so both are never visible together by construction. From the frame callbacks' `shown` tags, over all cases
+  (27 boundaries each, 25 cases): 0 outgoing frames after the swap, 0 standby frames before it, 0 repeated frames
+  (same `mediaTime` twice in a row) and 1 backwards `mediaTime` step (Firefox `early-24-24-mu`). Duplicate detection
+  rests on the callbacks, and Firefox reports every other frame, so a single repeated frame could be missed there. The
+  one thing that does show is a jump: the skipped content in the "ahead" cases above (20 to 140 ms of the incoming
+  clip, no overlap).
+- **Audio.** The elements are both playing, unmuted, from the standby's `play()` to the outgoing's pause: **0 to 1 ms**
+  for L = 20, 20 to 24 ms (Firefox, L = 40), 4 ms (Firefox, L = 24), 23 ms (Chrome 40-40), **46 ms (Chrome, null sink,
+  66-0) and 130 ms (Chrome, no sink, 150-0)**. That is structural: the two audio streams exist at once, and the
+  standby's does not produce sound until its audio start-up is over (about the same time as the boundary, which is the
+  point), so the audible overlap should be near zero when L matches the latency and about `L - lat` otherwise. **That was
+  not checked by ear or by recording**: nothing reached the speakers by rule, and the null sink's monitor was not
+  captured. The muted variants have no overlap at all but skip content.
+- Chrome's stream was on `claude_null` in all 1725 logged snapshots of this run (parsed per stream: Chrome only on
+  the null sink; the other streams in the log are the operator's own Firefox, untouched). The §6.6 watchdog compared
+  against a pattern that never matched its own log lines (`#id sink`), so its "never fired" says nothing; this run's
+  watchdog is the same script, and the check that counts is the per-stream parse above.
+
+**Caveats.**
+- Playing latency was measured on a null or absent sink. §6.5 applies: the operator's real device may differ, and a
+  Bluetooth sink would be larger.
+- Firefox's `currentTime` staleness makes D7 lost unreliable there (above), and Firefox reports every other frame, so
+  its hold and steady cannot resolve the 20 ms gate. The Chrome result (hold p90 66 against 70) is within 4 ms of the
+  limit as well, helped by the 4-vsync cadence of 50 fps on 60 Hz.
+- IN = 0.100 differs from §6.3's frame-0 start (so the in-point seeks mid-GOP); the `early-20-0` control and the
+  rerun `two-opacity` are the comparisons.
+- The decision is on a timer predicted from the frame callbacks (the frame 6.00's expected time) rather than the first
+  reported frame, because Firefox skips that frame. The earlier Firefox cases decided on the first reported frame at or
+  after 6.00, which can be 6.04.
+- One Firefox session was restarted (a stale BiDi session); all kept runs were `visible`.
+- Raw results, logs and the sink-input log: `results/spike2/` in the session scratchpad (`measure/`): `ff160-*`,
+  `chrome-nosink-early-*`, `chrome-null-early-*`, `analyze3-*.txt`, `early-sinkinputs.log`. Scripts: `spike3.html`,
+  `measure3.py`, `measure_ff3.py`, `analyze3.py`, `runE_*.sh`. Not in the repo.
