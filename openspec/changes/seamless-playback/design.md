@@ -205,7 +205,7 @@ stage gets `slotRefs`.
 The gate is the one in `event-timeline`, "Play crosses a clip boundary without a pause". The spec states the bounds the
 built code was measured to meet and the operator accepted on 2026-11-23 (research §6.10): per-browser absolute bounds
 for plain IN = 0 boundaries (lost p90 at most 20 ms; hold p90 at most the steady median plus 40 ms in Firefox (90 ms at a
-steady median of 50) and plus 67 ms in Chrome (100 ms at 33.5); no hold over 150 ms; no skip over 60 ms), a relative clause against the
+steady median of 50) and plus 67 ms in Chrome (about 100 at 33.5); no hold over 150 ms; no skip over 60 ms), a relative clause against the
 single element of the same session, and leading-cut boundaries as a known limitation. The definitions below are unchanged. Its terms:
 - **Hold.** The longest interval between successive frames on screen, from the outgoing clip's last kept frame to
   0.5 s into the incoming one. With two slots, the incoming frames count from the swap.

@@ -2,10 +2,10 @@
 
 ### Requirement: Play crosses a clip boundary without a pause
 
-While the Timeline plays, the next clip SHALL be loaded, sought to its first kept frame and started one measured
-play start-up latency before the playing clip ends. The picture SHALL go from the last kept frame of one clip to the
-first kept frame of the next with no blank picture and no added pause; if the next clip is not ready, the last frame
-SHALL stay on screen until it is. A black title card keeps the card's hand-over.
+While the Timeline plays, the next clip SHALL be loaded and started one measured play start-up latency before the
+playing clip ends, sought to its first kept frame less a learned pre-roll of at most 40 ms. The picture SHALL go from
+one clip to within a few frames of the first kept frame of the next with no blank picture; if the next clip is not
+ready, the last frame SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 
 #### Scenario: A plain boundary
 - **WHEN** on `2024-06-27 - Grillning med grannar` the Timeline plays from 0:04.00 of `s1710001.mp4` into
@@ -27,7 +27,7 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
   - **Plain boundaries into a clip's start (IN = 0), per browser:** the play time lost at a boundary is at most one
     frame interval (20 ms) at the 90th percentile; the hold at the 90th percentile is at most the median of the steady
     play's longest hold plus 40 ms in Firefox (two intervals of the 20 ms proxy frame; 90 ms at a steady median of
-    50 ms) and plus 67 ms in Chrome (two intervals of its reported 33.5 ms cadence; 100 ms at a steady median of
+    50 ms) and plus 67 ms in Chrome (two intervals of its reported 33.5 ms cadence; about 100 ms at a steady median of
     33.5 ms); no boundary holds a frame longer than
     150 ms or skips more than 60 ms of the incoming clip.
   - **Relative to the single-element hand-over** (the same script, run in the same session against the hand-over this
@@ -40,8 +40,8 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
     Chrome 20.5 ms) and Firefox hold p90 117 ms is over 90 ms (the other terms are met: Firefox max 134 ms, Chrome hold
     p90 83.5 ms and max 116.7 ms). All of these figures fail the first gate (70 / 54 / 100). The hold at the 90th percentile is below the single element's in
     Firefox (117 against 226.8 ms) and equal to it in Chrome (83.5 ms). No bound is claimed for them.
-  - **Not claimed:** a floor on negative lost time. The incoming clip's start is skipped by up to about two frames
-    (p10 lost -41.5 ms in Firefox, -39.4 ms in Chrome, IN = 0).
+  - **Not claimed:** a floor on negative lost time. The incoming clip's start is typically skipped by about two frames, at most about three
+    (p10 lost -41.5 ms in Firefox, -39.4 ms in Chrome; max skip 56.0 / 59.5 ms; IN = 0).
 
 #### Scenario: Pause during the lead
 - **WHEN** the Timeline plays the last 0.2 s of `s1710001.mp4` with `s1710002.mp4` in its standby and the operator
