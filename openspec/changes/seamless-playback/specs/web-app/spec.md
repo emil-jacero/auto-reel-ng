@@ -47,8 +47,9 @@ NOT count as starting, and a paused standby SHALL NOT count as playing. A video 
   next scenario
 
 #### Scenario: Edit mode's preview and the Timeline
-- **WHEN** in Edit mode a clip's preview plays and the operator presses Play on the Timeline
-- **THEN** the preview closes as "Edit mode holds one video at a time" says, and only the Timeline plays
+- **WHEN** in Edit mode a clip's preview plays in the bin's player and the operator presses Play on the Timeline
+- **THEN** the preview closes as "Edit mode holds one video at a time" says, the player shows the clip's
+  thumbnail, and only the Timeline plays
 
 #### Scenario: The Timeline's hand-over is not a start
 - **WHEN** in Edit mode the Timeline plays across the boundary from `s1710001.mp4` into `s1710002.mp4`, its standby
