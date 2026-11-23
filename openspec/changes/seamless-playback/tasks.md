@@ -123,56 +123,21 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - the card hand-over (no sampled blank frame);
   - the readout's fixed width across the first clip's end.
 
-  Done 2026-11-23 (the run and the record), recorded in `docs/research/seamless-playback.md` §6.9. **The change does not
-  meet its own acceptance: do not start 3.2 or archive until the operator has decided the open items below.** Result:
-  - **FAILS: "The boundary gate" (D7), in both browsers.** Firefox (primary): p90 hold 133 ms against 70, max 150 against
-    100, p10 lost -40.6 ms against the -40 floor. Chrome: p90 hold 116.6 against 53, max 133.2 against 100.
-  - **FAILS: "A plain boundary", its first-frame clause** ("the first frame of the next clip on screen is its first
-    frame"). The first reported frame was at media time 0.06 to 0.1 s (3 to 5 frames skipped) in the functional run; the
-    gate shows skips up to 53 ms (Firefox) and 56.6 ms (Chrome). The functional check did not enforce that clause, so an
-    earlier version of this note counted it as a pass.
-  - **Fixed, re-verified: "Pause during the lead", its last clause.** `play()` now asks `atPlay` (standby.ts): Play within
-    the end slack hands over to (or waits for) the standby that holds the next clip's start, instead of loading it into the
-    shown slot. Playwright `pause-in-lead` passes in Firefox and Chromium (handover `play`, 0 blank samples after Play).
-  - **Not exercised: "The clips shrink under the playhead"** (no quiet re-read of the clips could be triggered).
-    Explicitly unverified.
-  - Every other scenario of both deltas passes in both browsers, except the finger swipe (Chromium only, not run in Firefox). Scrub, frame step, card hand-over and readout pass.
-  - Coverage gaps: the gate ran only IN = 0 clips, so P was 0 throughout and the pre-roll path was not measured headed;
-    the readout ran on another event than the spec names (6.02 s clips); Chrome 158 and Firefox 160 ran (the spec floor
-    for Chrome is 157, so 158 satisfies it).
+  Done 2026-11-23 (the runs and the record), `docs/research/seamless-playback.md` §6.9 and §6.10. **Operator decision
+  (2026-11-23): after watching the built branch headed in Firefox the operator judged the boundaries "not that bad
+  actually" and stopped optimization. The change ships as measured in §6.10.** Resolution of the open items:
+  1. Gate (swap timing, D7): swap fixed (`b9240998`) and re-measured. **Accepted as measured**; the spec now states the
+     measured per-browser bounds (IN = 0), a relative clause against the single element, and leading cuts as a known
+     limitation. Firefox IN = 0: hold p50 / p90 / max 51 / 83 / 134 ms, p10 lost -41.5; Chrome IN = 0 passes the first
+     gate's every term; leading cuts fail it in both browsers. Follow-up: P worsens leading cuts (candidate: drop P).
+  2. First-frame clause: **known limitation / follow-up.** The spec allows 5 frames (0.10 s); typical 2 to 3 frames.
+  3. "Pause during the lead": fixed (`097c0deb`), passes in Firefox and Chromium. Done.
+  4. "The clips shrink under the playhead": **accepted as unverified** (re-read route); layout path verified through
+     Ignore clip.
+  Also recorded as risks in design.md: Bluetooth and real-sink latency unmeasured, audio overlap during the lead
+  unchecked. Scrub, frame step, card hand-over and readout pass; the finger swipe ran in Chromium only.
 
-  **Open items, operator decision required (blocks 3.2, 3.3 and archive):**
-  1. Gate: fix the swap timing (diagnosis in §6.9: `swap` waits for the incoming slot's next frame callback after
-     `swapAt`, adding about 40 to 60 ms in Firefox and 20 to 30 ms in Chrome), then re-run 3.1's gate; or revise D7 and the
-     spec. If re-run, add a headed block with IN > 0 (leading cuts) so that P is exercised.
-  2. First-frame clause: design D4's "What is accepted" (about 28 ms skipped, Firefox only, IN = 0) is contradicted by
-     the measurements (median about 30 ms and up to 57 ms in Chrome too, with IN = 0 the common case). Change the spec
-     clause or the design, or fix the alignment.
-  3. (DONE, see above) "Pause during the lead": either `play()` hands over to a ready standby when `startFrom` leaves the clip, or the last
-     clause is reworded (e.g. "Play then goes on into the next clip's first kept frame").
-  4. "The clips shrink under the playhead": find a way to trigger the clips re-read, or accept it as unverified.
-  **Re-measured 2026-11-23 on the fixed code (`097c0deb`), `docs/research/seamless-playback.md` §6.10. Still blocked.**
-  Headed, null sink, sound on, Firefox 160 then Chrome 158, an IN = 0 event (72 built boundaries per browser) and a
-  leading-cut event (IN = 0.5 s, 36 per browser, a scratch library):
-  1. **Gate: Firefox FAILS on both events; Chrome PASSES IN = 0 and FAILS the leading-cut event.** IN = 0, Firefox: hold
-     p90 83 against 70, max 134 against 100, p10 lost -41.5 against -40 (p90 lost 7.0 passes). IN = 0, Chrome: all terms
-     met (p90 hold 50.1 against 54, max 66.7, p10 lost -39.4). Leading cut, Firefox: p90 lost 29.8, p90 hold 117 against
-     70, max 134. Leading cut, Chrome: p90 lost 20.5, p90 hold 83.5 against 54, max 116.7. The swap fix moved the hold
-     (Firefox p50 117 to 51 ms on IN = 0); on the leading-cut event the extra hold and the positive lost come with the
-     learned pre-roll (P above 0: Firefox median hold 84 ms against 50 with P = 0). LEAD median 52 to 71.5 ms, no clamp
-     hits; P is now above 0 in Firefox (median 15, max 38 ms) and in Chrome (median 29.5, 10 of 36 at the 40 ms clamp).
-     Next: the pre-roll hand-over (P above 0) is the thing to fix or to account for in D4/D7; not tuned here.
-  2. **First-frame clause: still open.** The first reported frame is at 0.04 to 0.06 s (2 to 3 frames) in the functional
-     runs; headed, at or before 0.04 s in 55 of 72 (Firefox) and 64 of 72 (Chrome) boundaries, max 0.10 / 0.08. The
-     reporting of every other frame (Firefox) keeps this from being settled by the data. The spec wording or D4's "What is
-     accepted" needs the operator's decision.
-  3. **"Pause during the lead": verified passing in Firefox 159 and Chromium** on the fixed code.
-  4. **"The clips shrink under the playhead":** the quiet re-read cannot reach the Timeline in Edit mode (only the
-     verdict is re-read) and could not be triggered; the same layout path was exercised by "Ignore clip" on the clip
-     under the playhead, which passes in both browsers (playhead to the start, 3 clips, no error). The re-read route
-     stays unverified.
-
-- [ ] 3.2 Record the change (BLOCKED on the open items of 3.1; the HLD must not state a measured gate the code does not meet):
+- [x] 3.2 Record the change (the HLD states the gate as measured and accepted, not the first gate):
   - HLD D-20: an "Amended …, change `seamless-playback`" bullet covering the two slots, the standby rules, plain
     boundaries only, the flash now accepted only for moves of the playhead, and the measured gate. Note on the "What
     stays" list and on the card bridge's "No second `<video>`" that the standby is built and does not cross black
@@ -180,5 +145,5 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - "`seamless-playback` is built" in §6 item 10.
   - `web/README.md`: the "One video plays at a time" paragraph names the Timeline's two slots as one player.
   - `docs/editor-workspace.md`: the `seamless-playback` row.
-- [ ] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman, recording the bundle delta in the HLD
+- [x] 3.3 Gates: `npm test`, `npm run check` and `npm run build` in podman, recording the bundle delta in the HLD
   bullet; `openspec validate seamless-playback --strict`.

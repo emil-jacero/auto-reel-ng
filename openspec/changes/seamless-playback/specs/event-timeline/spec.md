@@ -11,7 +11,8 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 - **WHEN** on `2024-06-27 - Grillning med grannar` the Timeline plays from 0:04.00 of `s1710001.mp4` into
   `s1710002.mp4`
 - **THEN** every sample of the stage across the boundary shows a frame of one of the two clips, never the stage's
-  background; the first frame of `s1710002.mp4` on screen is its first frame; the playhead and the readout move into
+  background; the first presented frame of `s1710002.mp4` is within 5 frames (0.10 s, 50 fps proxy) of its first kept frame, so
+  up to a few frames at its start can be skipped; the playhead and the readout move into
   `s1710002.mp4`; and the request for `s1710002.mp4`'s proxy was made before `s1710001.mp4` ended
 
 #### Scenario: The boundary gate
@@ -20,14 +21,25 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
   sound on and routed to an audio output that accepts the stream but reaches no speaker (a null sink), the page
   visible throughout, counting only boundaries whose steady play keeps its cadence (in the second before the boundary
   no frame is held longer than three refresh intervals of the display plus 2 ms, 52 ms at 60 Hz)
-- **THEN** in each browser: the play time lost at a boundary (real time from the outgoing clip's last kept frame to
-  0.5 s later, minus the media time of both clips played in that span) is at most one frame interval (20 ms) at the
-  90th percentile, and at least minus two frame intervals (-40 ms, the incoming clip's start skipped) at the 10th
-  percentile, each clip's position taken from its presented frames (frame callback time minus media time), not from
-  `currentTime`; the longest time a frame stays on screen across the boundary is, at the 90th percentile, at most the
-  median of the steady play's longest hold plus one frame interval, compared in whole milliseconds; no boundary holds
-  a frame longer than 100 ms or skips more than 60 ms of the incoming clip; and the same script run in the same
-  session against the single-element hand-over this change replaces is reported beside it
+- **THEN** the numbers are those measured and accepted by the operator on 2026-11-23 (research §6.10). Definitions are
+  design D7's; lost and hold are in milliseconds, each clip's position taken from its presented frames (frame callback
+  time minus media time), not from `currentTime`.
+  - **Plain boundaries into a clip's start (IN = 0), per browser:** the play time lost at a boundary is at most one
+    frame interval (20 ms) at the 90th percentile; the hold at the 90th percentile is at most the median of the steady
+    play's longest hold plus two frame intervals of the browser's reported cadence (at most 90 ms in Firefox, which
+    reports every other frame of a 50 fps proxy; 100 ms in Chrome at 33.5 ms); no boundary holds a frame longer than
+    150 ms or skips more than 60 ms of the incoming clip.
+  - **Relative to the single-element hand-over** (the same script, run in the same session against the hand-over this
+    change replaces): lost at the 90th percentile is at most half of the single element's, in both browsers. Hold at
+    the 90th percentile is at most half of it in Firefox (83 against 255.5 ms); in Chrome it is lower but not half
+    (50.1 against 83.4 ms), so the Chrome hold is met by the absolute bound above only.
+  - **Leading-cut boundaries (the incoming clip entered at IN above 0), a known limitation:** lost at the 90th
+    percentile is at most half of the single element's in both browsers (Firefox 29.8 against 237.2 ms, Chrome 20.5
+    against 153.8 ms), and the absolute bounds above are not met (Firefox hold p90 117 ms and max 134 ms; Chrome hold
+    p90 83.5 ms, max 116.7 ms, lost p90 20.5 ms). The hold at the 90th percentile is below the single element's in
+    Firefox (117 against 226.8 ms) and equal to it in Chrome (83.5 ms). No bound is claimed for them.
+  - **Not claimed:** a floor on negative lost time. The incoming clip's start is skipped by up to about two frames
+    (p10 lost -41.5 ms in Firefox, -39.4 ms in Chrome, IN = 0).
 
 #### Scenario: Pause during the lead
 - **WHEN** the Timeline plays the last 0.2 s of `s1710001.mp4` with `s1710002.mp4` in its standby and the operator

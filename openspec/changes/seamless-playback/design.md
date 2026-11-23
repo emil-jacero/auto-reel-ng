@@ -200,7 +200,11 @@ stage gets `slotRefs`.
   the clip it holds.
 
 ### D7. The boundary gate and its measurement
-The gate is the one in `event-timeline`, "Play crosses a clip boundary without a pause". Its terms:
+The gate is the one in `event-timeline`, "Play crosses a clip boundary without a pause". The spec states the bounds the
+built code was measured to meet and the operator accepted on 2026-11-23 (research §6.10): per-browser absolute bounds
+for plain IN = 0 boundaries (lost p90 at most 20 ms; hold p90 at most the steady median plus two frame intervals of the
+browser's reported cadence, 90 ms in Firefox; no hold over 150 ms; no skip over 60 ms), a relative clause against the
+single element of the same session, and leading-cut boundaries as a known limitation. The definitions below are unchanged. Its terms:
 - **Hold.** The longest interval between successive frames on screen, from the outgoing clip's last kept frame to
   0.5 s into the incoming one. With two slots, the incoming frames count from the swap.
 - **Steady hold.** The same, over the outgoing clip's preceding second. A run counts only when no steady frame is held
@@ -324,6 +328,18 @@ adopted; this amendment, with its P calibration, is for the operator to confirm 
   near zero when LEAD matches the latency and about LEAD minus latency otherwise.
 
 
+### Operator decision: ship as measured (2026-11-23)
+After watching the built branch headed in Firefox on `2024-06-27 - Grillning med grannar`, the operator judged the
+boundaries "not that bad actually" and stopped optimization. The change ships as measured in research §6.10:
+- IN = 0, Firefox: hold p50 / p90 / max 51 / 83 / 134 ms (the first gate allowed 70 / 100), p10 lost -41.5 ms (floor
+  was -40). Chrome passes every term of the first gate. Today's single element, for comparison: Firefox lost about
+  220 ms, hold p90 about 251 ms.
+- Leading cuts fail the first gate in both browsers (Firefox lost p90 29.8, hold p90 117; Chrome lost p90 20.5, hold
+  p90 83.5). The spec therefore states the measured per-browser bounds, a relative clause, and the leading-cut case as
+  a known limitation, rather than the first gate.
+- Open items stay open as known limitations or follow-ups (Risks): the first-frame skip, P worsening leading cuts, and
+  the unverified re-read route of "The clips shrink under the playhead" (layout path verified through Ignore clip).
+
 ## Risks / Trade-offs
 
 - **[Risk] The headed numbers differ from the headless spike.** Hardware decode and an audio sink make `play()` on a
@@ -347,6 +363,20 @@ adopted; this amendment, with its P calibration, is for the operator to confirm 
   workspace, at 390, 1280 and 1440 px, light and dark, with turned clips.
 - **[Risk] Gates.** The scrub (median ≥ 30 fps), the frame step (p90 ≤ 60 ms), the card hand-over (no gap) and the
   readout across a clip's end are re-measured in 3.1. Only the shown slot seeks, so no change is expected.
+- **[Known limitation, follow-up] The learned pre-roll P worsens leading-cut boundaries.** On the leading-cut event
+  the Firefox median hold is 84 ms with P above 0 against 50 ms with P = 0, and the hold grows as P is learned (§6.10).
+  The leading-cut block fails the first gate in both browsers. → Candidate follow-up: drop P (and with it the
+  calibrated pre-roll). Not changed here.
+- **[Open follow-up] First-frame skip at the incoming start.** The first presented frame is at 0.04 to 0.06 s (2 to 3
+  frames) in the functional runs; headed, at or before 0.04 s in 55 of 72 (Firefox) and 64 of 72 (Chrome) boundaries,
+  at most 0.10 s / 0.08 s. Browsers do not report every frame, so the data cannot say how much is skipped and how much
+  is reported late. The spec allows 5 frames (0.10 s).
+- **[Unmeasured] Bluetooth and other real sinks.** Every timing run used a null sink. LEAD's clamp (250 ms) may not
+  cover a Bluetooth sink's start-up.
+- **[Unchecked] Audio overlap during the lead.** Both slots play unmuted during the lead; it was not checked by ear or
+  by recording.
+- **[Unverified] "The clips shrink under the playhead", re-read route.** The quiet re-read cannot reach the Timeline in
+  Edit mode and could not be triggered; the layout path passes through Ignore clip on the clip under the playhead.
 
 ## Failure behaviour
 
