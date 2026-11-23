@@ -151,6 +151,27 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   3. (DONE, see above) "Pause during the lead": either `play()` hands over to a ready standby when `startFrom` leaves the clip, or the last
      clause is reworded (e.g. "Play then goes on into the next clip's first kept frame").
   4. "The clips shrink under the playhead": find a way to trigger the clips re-read, or accept it as unverified.
+  **Re-measured 2026-11-23 on the fixed code (`097c0deb`), `docs/research/seamless-playback.md` §6.10. Still blocked.**
+  Headed, null sink, sound on, Firefox 160 then Chrome 158, an IN = 0 event (72 built boundaries per browser) and a
+  leading-cut event (IN = 0.5 s, 36 per browser, a scratch library):
+  1. **Gate: Firefox FAILS on both events; Chrome PASSES IN = 0 and FAILS the leading-cut event.** IN = 0, Firefox: hold
+     p90 83 against 70, max 134 against 100, p10 lost -41.5 against -40 (p90 lost 7.0 passes). IN = 0, Chrome: all terms
+     met (p90 hold 50.1 against 54, max 66.7, p10 lost -39.4). Leading cut, Firefox: p90 lost 29.8, p90 hold 117 against
+     70, max 134. Leading cut, Chrome: p90 lost 20.5, p90 hold 83.5 against 54, max 116.7. The swap fix moved the hold
+     (Firefox p50 117 to 51 ms on IN = 0); on the leading-cut event the extra hold and the positive lost come with the
+     learned pre-roll (P above 0: Firefox median hold 84 ms against 50 with P = 0). LEAD median 52 to 71.5 ms, no clamp
+     hits; P is now above 0 in Firefox (median 15, max 38 ms) and in Chrome (median 29.5, 10 of 36 at the 40 ms clamp).
+     Next: the pre-roll hand-over (P above 0) is the thing to fix or to account for in D4/D7; not tuned here.
+  2. **First-frame clause: still open.** The first reported frame is at 0.04 to 0.06 s (2 to 3 frames) in the functional
+     runs; headed, at or before 0.04 s in 55 of 72 (Firefox) and 64 of 72 (Chrome) boundaries, max 0.10 / 0.08. The
+     reporting of every other frame (Firefox) keeps this from being settled by the data. The spec wording or D4's "What is
+     accepted" needs the operator's decision.
+  3. **"Pause during the lead": verified passing in Firefox 159 and Chromium** on the fixed code.
+  4. **"The clips shrink under the playhead":** the quiet re-read cannot reach the Timeline in Edit mode (only the
+     verdict is re-read) and could not be triggered; the same layout path was exercised by "Ignore clip" on the clip
+     under the playhead, which passes in both browsers (playhead to the start, 3 clips, no error). The re-read route
+     stays unverified.
+
 - [ ] 3.2 Record the change (BLOCKED on the open items of 3.1; the HLD must not state a measured gate the code does not meet):
   - HLD D-20: an "Amended …, change `seamless-playback`" bullet covering the two slots, the standby rules, plain
     boundaries only, the flash now accepted only for moves of the playhead, and the measured gate. Note on the "What
