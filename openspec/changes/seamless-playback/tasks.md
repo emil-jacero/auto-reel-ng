@@ -123,12 +123,34 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - the card hand-over (no sampled blank frame);
   - the readout's fixed width across the first clip's end.
 
-  Done 2026-11-23, recorded in `docs/research/seamless-playback.md` §6.9. Result: every scenario passes in both browsers
-  except the last clause of "Pause during the lead" (Play within the end slack goes through `startFrom`'s next-clip start,
-  not the standby), "The clips shrink under the playhead" was not exercised, and **the boundary gate fails in both
-  browsers on the hold terms** (Firefox p90 hold 133 ms against 70, max 150; Chrome 116.6 against 53, max 133.2; Firefox
-  p10 lost -40.6 ms against the -40 floor). Scrub, frame step, card hand-over and readout pass.
-- [ ] 3.2 Record the change:
+  Done 2026-11-23 (the run and the record), recorded in `docs/research/seamless-playback.md` §6.9. **The change does not
+  meet its own acceptance: do not start 3.2 or archive until the operator has decided the open items below.** Result:
+  - **FAILS: "The boundary gate" (D7), in both browsers.** Firefox (primary): p90 hold 133 ms against 70, max 150 against
+    100, p10 lost -40.6 ms against the -40 floor. Chrome: p90 hold 116.6 against 53, max 133.2 against 100.
+  - **FAILS: "A plain boundary", its first-frame clause** ("the first frame of the next clip on screen is its first
+    frame"). The first reported frame was at media time 0.06 to 0.1 s (3 to 5 frames skipped) in the functional run; the
+    gate shows skips up to 53 ms (Firefox) and 56.6 ms (Chrome). The functional check did not enforce that clause, so an
+    earlier version of this note counted it as a pass.
+  - **FAILS: "Pause during the lead", its last clause** ("Play then crosses the boundary as before"): Play within the end
+    slack takes `startFrom`'s next-clip start and loads into the shown slot (2 to 3 blank samples), not the ready standby.
+  - **Not exercised: "The clips shrink under the playhead"** (no quiet re-read of the clips could be triggered).
+    Explicitly unverified.
+  - Every other scenario of both deltas passes in both browsers. Scrub, frame step, card hand-over and readout pass.
+  - Coverage gaps: the gate ran only IN = 0 clips, so P was 0 throughout and the pre-roll path was not measured headed;
+    the readout ran on another event than the spec names (6.02 s clips); Chrome 158 and Firefox 160 ran (the spec floor
+    for Chrome is 157, so 158 satisfies it).
+
+  **Open items, operator decision required (blocks 3.2, 3.3 and archive):**
+  1. Gate: fix the swap timing (diagnosis in §6.9: `swap` waits for the incoming slot's next frame callback after
+     `swapAt`, adding about 40 to 60 ms in Firefox and 20 to 30 ms in Chrome), then re-run 3.1's gate; or revise D7 and the
+     spec. If re-run, add a headed block with IN > 0 (leading cuts) so that P is exercised.
+  2. First-frame clause: design D4's "What is accepted" (about 28 ms skipped, Firefox only, IN = 0) is contradicted by
+     the measurements (median about 30 ms and up to 57 ms in Chrome too, with IN = 0 the common case). Change the spec
+     clause or the design, or fix the alignment.
+  3. "Pause during the lead": either `play()` hands over to a ready standby when `startFrom` leaves the clip, or the last
+     clause is reworded (e.g. "Play then goes on into the next clip's first kept frame").
+  4. "The clips shrink under the playhead": find a way to trigger the clips re-read, or accept it as unverified.
+- [ ] 3.2 Record the change (BLOCKED on the open items of 3.1; the HLD must not state a measured gate the code does not meet):
   - HLD D-20: an "Amended …, change `seamless-playback`" bullet covering the two slots, the standby rules, plain
     boundaries only, the flash now accepted only for moves of the playhead, and the measured gate. Note on the "What
     stays" list and on the card bridge's "No second `<video>`" that the standby is built and does not cross black
