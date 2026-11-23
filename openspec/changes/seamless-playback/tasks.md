@@ -111,7 +111,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
 
 ## 3. Verification and record
 
-- [ ] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`event-timeline`, `web-app`).
+- [x] 3.1 Run Playwright in Chromium and Firefox over every scenario of both deltas (`event-timeline`, `web-app`).
   - Carried over from 2.2 (review): run the black-card boundary; force "Play again while the standby is returning" (Play during the standby's `seeking`, e.g. delayed range requests); scrub during the lead in Chromium as well as Firefox; the cancel-after-decision paths (`finishOnSeek`, `wait` -> `started` -> cancel); Firefox with P forced above 20 (seed `calibration`), a 50 fps proxy, a leading cut on the next clip and a delayed proxy (the `seeked` hand-over). Land 2.3 (`shown()` / `onSwap` for poster and frame-ready) before any merge or user-facing build.
   Then re-measure headed on the host's display, and record the numbers in `docs/research/seamless-playback.md` §6:
   - the boundary gate as revised (design D7): at least 20 plain boundaries per browser, Firefox first, with sound on
@@ -122,6 +122,12 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - the frame step (p90 ≤ 60 ms over 40 Right presses);
   - the card hand-over (no sampled blank frame);
   - the readout's fixed width across the first clip's end.
+
+  Done 2026-11-23, recorded in `docs/research/seamless-playback.md` §6.9. Result: every scenario passes in both browsers
+  except the last clause of "Pause during the lead" (Play within the end slack goes through `startFrom`'s next-clip start,
+  not the standby), "The clips shrink under the playhead" was not exercised, and **the boundary gate fails in both
+  browsers on the hold terms** (Firefox p90 hold 133 ms against 70, max 150; Chrome 116.6 against 53, max 133.2; Firefox
+  p10 lost -40.6 ms against the -40 floor). Scrub, frame step, card hand-over and readout pass.
 - [ ] 3.2 Record the change:
   - HLD D-20: an "Amended …, change `seamless-playback`" bullet covering the two slots, the standby rules, plain
     boundaries only, the flash now accepted only for moves of the playhead, and the measured gate. Note on the "What
