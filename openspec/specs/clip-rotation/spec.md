@@ -81,19 +81,6 @@ mode's save bar stays compact and fits the window" allows.
 - **WHEN** a clip is turned right and then left
 - **THEN** the save bar does not mention a rotation
 
-### Requirement: The marked group turns together
-
-The marks line (`Edit mode marks clips to move together`) SHALL offer **Rotate marked left** and **Rotate marked
-right**. Each SHALL turn every marked clip that is on disk by a quarter turn from that clip's own current turn in the
-draft, in one step, and SHALL announce once how many clips were turned ("3 clips rotated right."). They SHALL be
-disabled, and say why to assistive technology, when no clip is marked. Turning the group SHALL NOT clear or change the
-marks. The buttons SHALL meet the touch-size rule above and SHALL fit the line at 390 pixels wide without making the page
-scroll horizontally.
-
-#### Scenario: Three marked clips with different turns
-- **WHEN** three clips with turns 0, 90 and 270 are marked and Rotate marked right is pressed
-- **THEN** their turns are 90, 180 and 0 (key removed), they stay marked, and Rotate marked left restores all three
-
 ### Requirement: Every picture of a clip shows its turn
 
 Wherever the client shows a picture of a clip, it SHALL show it turned by the clip's turn in the draft in Edit mode, and
