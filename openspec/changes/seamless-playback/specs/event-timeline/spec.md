@@ -67,7 +67,7 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 The Timeline SHALL load a standby `<video>` only while it plays, with the clip play goes on into. The standby SHALL be
 invisible, hidden from assistive technology and out of the Tab order, and muted and not counted as playing until its
 early start; from then until it takes over it plays unmuted as the Timeline's own play. A pause, scrub, seek, Previous
-or Next clip, yield or reload SHALL put a started standby back at its pre-sought position (its first kept frame less the pre-roll). A preview and closing the
+or Next clip, yield or reload SHALL put a started standby back at its pre-sought position. A preview and closing the
 Timeline SHALL release it.
 
 #### Scenario: Nothing loads ahead while paused
