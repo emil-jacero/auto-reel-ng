@@ -4919,14 +4919,16 @@ counts or its verdict ("Reading a screen never changes state").
 
 Whenever a video of the page starts to play while another video of the page is playing, the other SHALL be paused where
 it is. This SHALL hold between any two of the page's players, in either order: the Movie section's player, a clip's
-player in the read view, a clip's preview in Edit mode and the Timeline's video (Edit mode only), however the video was started (its
+player in the read view, a clip's preview in Edit mode and the Timeline's video (Edit mode only; its shown and its standby `<video>` are one player), however the video was started (its
 own controls, a keyboard key, a chapter jump in the Movie section's chapter list, a thumbnail's play control, the
 Timeline's Play, or a player's Play after a thumbnail's control opened it). The rule SHALL be one rule for every video, held in
 one place, and not a rule per pair of players: a player added to the page SHALL be covered by it without being named
 in it. Neither video SHALL be closed, replaced, restarted or seeked by it, no word SHALL be announced for it, and
 pausing SHALL be the only thing the page does: the video that was paused SHALL stay available and play on from its
-position when its own Play is pressed. A video that Skip cuts seeks, or that plays on after a seek or after a change of
-its file at a clip boundary, SHALL NOT count as starting. A video that is paused or ended SHALL NOT be touched.
+position when its own Play is pressed. A video that Skip cuts seeks, that plays on after a seek or after a change of
+its file at a clip boundary, or the Timeline's standby that is started shortly before a clip boundary and takes over from its shown video there,
+SHALL NOT count as starting; a paused standby SHALL NOT count as playing, and a standby started in the lead is the
+Timeline's own play, so the shown video is not paused for it. A video that is paused or ended SHALL NOT be touched.
 
 #### Scenario: A clip started while the movie plays
 - **WHEN** the Movie section's player plays at `1:12` and the operator presses Play in the open player of
@@ -4964,6 +4966,12 @@ its file at a clip boundary, SHALL NOT count as starting. A video that is paused
 - **WHEN** in Edit mode a clip's preview plays in the bin's player and the operator presses Play on the Timeline
 - **THEN** the preview closes as "Edit mode holds one video at a time" says, the player shows the clip's
   thumbnail, and only the Timeline plays
+
+#### Scenario: The Timeline's hand-over is not a start
+- **WHEN** in Edit mode the Timeline plays across the boundary from `s1710001.mp4` into `s1710002.mp4`, its standby
+  starting shortly before the boundary and taking over
+- **THEN** the Timeline still plays and its button says "Pause", no other video of the page is paused, and nothing is
+  announced
 
 ### Requirement: A trim made on the timeline is an edit of the same draft as a cut made in the Cuts panel
 
