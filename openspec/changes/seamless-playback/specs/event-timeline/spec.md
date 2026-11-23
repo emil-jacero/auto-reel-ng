@@ -40,8 +40,8 @@ ready, the last frame SHALL stay on screen until it is. A black title card keeps
     Chrome 20.5 ms) and Firefox hold p90 117 ms is over 90 ms (the other terms are met: Firefox max 134 ms, Chrome hold
     p90 83.5 ms and max 116.7 ms). All of these figures fail the first gate (70 / 54 / 100). The hold at the 90th percentile is below the single element's in
     Firefox (117 against 226.8 ms) and equal to it in Chrome (83.5 ms). No bound is claimed for them.
-  - **Not claimed:** a floor on negative lost time. The incoming clip's start is typically skipped by about two frames, at most about three
-    (p10 lost -41.5 ms in Firefox, -39.4 ms in Chrome; max skip 56.0 / 59.5 ms; IN = 0).
+  - **Not claimed:** a floor on negative lost time. The incoming clip's start is skipped by a median of about 12 to 31 ms (0.6 to 1.5 frames; lost p50 -12.0 ms in Firefox,
+    -31.0 ms in Chrome) and by at most about three frames by the clock-derived measure (p10 lost -41.5 ms in Firefox, -39.4 ms in Chrome; max skip 56.0 / 59.5 ms; IN = 0).
 
 #### Scenario: Pause during the lead
 - **WHEN** the Timeline plays the last 0.2 s of `s1710001.mp4` with `s1710002.mp4` in its standby and the operator
@@ -56,12 +56,12 @@ ready, the last frame SHALL stay on screen until it is. A black title card keeps
 
 #### Scenario: Into a leading cut
 - **WHEN** the clip after the playing one has a cut from 0 to 1.50 s
-- **THEN** the first frame of it on screen is its frame at 1.50 s, no frame inside the cut is shown, and the boundary
-  has no added pause
+- **THEN** the first frame of it on screen is its frame at 1.50 s, and no frame inside the cut is shown. The boundary's
+  timing is not bounded here: "The boundary gate" lists leading cuts as a known limitation
 
 #### Scenario: Over a clip that is cut whole
 - **WHEN** the clip after the playing one is cut from its start to its end
-- **THEN** play goes on into the clip after that one, as the render skips the cut clip, with no added pause
+- **THEN** play goes on into the clip after that one, as the render skips the cut clip (verified functionally only; no headed timing run measured this boundary, and no bound is claimed)
 
 #### Scenario: The next clip is not ready in time
 - **WHEN** the next clip's proxy answers so slowly that it is not ready when the playing clip ends
