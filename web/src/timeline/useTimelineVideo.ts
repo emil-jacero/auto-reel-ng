@@ -15,6 +15,7 @@ import {
   median,
   preRollOf,
   resetCalibration,
+  shownIsFirstKept,
   withAlignmentSample,
   withLeadSample,
 } from './lead'
@@ -136,8 +137,6 @@ type LeadRun = {
   aligned: boolean
   committed: boolean
   swapped: boolean
-  /** The earliest real time of the swap (one frame interval after the decision). */
-  swapAt: number
   /** A cancel after the decision: swap once the standby is at the first kept frame. */
   finishOnSeek: boolean
   watchdog: number | null
@@ -710,7 +709,6 @@ export function useTimelineVideo({
         if (
           run.committed &&
           !run.swapped &&
-          now >= run.swapAt &&
           mediaMs >= run.want.ms - stepMs / 2
         ) {
           swap(run)
@@ -758,7 +756,6 @@ export function useTimelineVideo({
         aligned: false,
         committed: false,
         swapped: false,
-        swapAt: 0,
         finishOnSeek: false,
         watchdog: null,
         chain: null,
@@ -803,14 +800,12 @@ export function useTimelineVideo({
       if (run === null || standby.current.kind !== 'started') {
         return
       }
-      const now = performance.now()
       const clip = clipsRef.current[want.clip]
       const stepMs = clip === undefined ? 40 : 1000 / clip.facts.fps
       pauseOwn(shownSlot.current)
       disarm()
       run.committed = true
       run.source = source
-      run.swapAt = source === 'timer' ? now + stepMs : now
       run.watchdog = window.setTimeout(() => {
         if (leadRun.current === run && !run.swapped) {
           swap(run)
@@ -825,6 +820,19 @@ export function useTimelineVideo({
       playhead.set(want)
       coalescer.sync(want)
       frames.current = []
+      // The timer path swaps with the pause, in the same task (one paint), when the standby's picture
+      // is already the first kept frame; otherwise `watchIncoming` swaps on the first frame that is.
+      if (
+        source === 'timer' &&
+        shownIsFirstKept(
+          run.preRollMs,
+          run.samples.length === 0 ? null : run.samples[run.samples.length - 1].mediaMs,
+          want.ms,
+          stepMs,
+        )
+      ) {
+        swap(run)
+      }
     },
     [addressOf, clearTimers, coalescer, disarm, pauseOwn, playhead, standbyEl, startStandby, swap],
   )

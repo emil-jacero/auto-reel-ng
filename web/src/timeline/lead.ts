@@ -97,7 +97,7 @@ export function frameClock(samples: readonly FrameSample[], nowMs: number): numb
 export type EarlyTimes = {
   /** When to start the standby, on the same clock as `nowMs` (never before it). */
   startAt: number
-  /** When to decide: the predicted last kept frame, one frame interval before the kept end. */
+  /** When to decide: the kept end less `DECIDE_MARGIN_MS` at most, so the last kept frame is presented first. */
   decideAt: number
   /** The start time was already past, or the lead is longer than the time left: start at once. */
   startNow: boolean
@@ -106,9 +106,34 @@ export type EarlyTimes = {
 /**
  * When the standby starts and when the hand-over decides, from the shown slot's frame
  * clock, its kept end and the lead. `startAt` is the kept end less `leadMs`; `decideAt` is
- * the kept end less one frame interval. Neither is before `nowMs`, and `decideAt` is not
- * before `startAt`.
+ * the kept end less a small margin (`decideMarginOf`), so S's last kept frame is presented
+ * before the pause. Neither is before `nowMs`, and `decideAt` is not before `startAt`.
  */
+/** The most the decision is early: timer lateness was at most 5 ms, so a frame due at the kept end cannot show. */
+export const DECIDE_MARGIN_MS = 6
+
+/** How long before the kept end the decision runs: `DECIDE_MARGIN_MS`, and at most half a frame interval. */
+export function decideMarginOf(frameIntervalMs: Ms): Ms {
+  return Math.min(DECIDE_MARGIN_MS, frameIntervalMs / 2)
+}
+
+/**
+ * Whether the standby's shown picture is already the first kept frame at the decision, so the
+ * swap can run with the pause. With no pre-roll the pre-sought frame is frame IN itself; with
+ * pre-roll it is footage inside the cut until a presented frame reaches `wantMs`.
+ */
+export function shownIsFirstKept(
+  preRollMs: Ms,
+  newestMediaMs: Ms | null,
+  wantMs: Ms,
+  frameIntervalMs: Ms,
+): boolean {
+  if (preRollMs <= 0) {
+    return true
+  }
+  return newestMediaMs !== null && newestMediaMs >= wantMs - frameIntervalMs / 2
+}
+
 export function earlyTimes(
   clockMs: number,
   keptEndMs: Ms,
@@ -121,7 +146,7 @@ export function earlyTimes(
   const startAt = Math.max(nowMs, rawStart)
   return {
     startAt,
-    decideAt: Math.max(startAt, endAt - frameIntervalMs),
+    decideAt: Math.max(startAt, endAt - decideMarginOf(frameIntervalMs)),
     startNow: rawStart <= nowMs,
   }
 }

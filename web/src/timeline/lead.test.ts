@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
+  decideMarginOf,
   earlyTimes,
+  shownIsFirstKept,
   frameClock,
   FRESH,
   keptEndOf,
@@ -140,14 +142,14 @@ describe('frameClock', () => {
 
 describe('earlyTimes', () => {
   // clock: callback time = media time + 1000; S's kept end at 5000 ms of its media
-  it('starts one lead before the kept end and decides one frame interval before it', () => {
+  it('starts one lead before the kept end and decides a margin before it', () => {
     const t = earlyTimes(1000, 5000, 40, 40, 2000)
     assert.equal(t.startAt, 5960)
-    assert.equal(t.decideAt, 5960)
+    assert.equal(t.decideAt, 5994)
     assert.equal(t.startNow, false)
     const long = earlyTimes(1000, 5000, 120, 40, 2000)
     assert.equal(long.startAt, 5880)
-    assert.equal(long.decideAt, 5960)
+    assert.equal(long.decideAt, 5994)
   })
 
   it('a start time already past starts at once', () => {
@@ -161,12 +163,32 @@ describe('earlyTimes', () => {
     const t = earlyTimes(1000, 5000, 250, 40, 5900)
     assert.equal(t.startNow, true)
     assert.equal(t.startAt, 5900)
-    assert.equal(t.decideAt, 5960)
+    assert.equal(t.decideAt, 5994)
   })
 
-  it('decideAt is one frame interval before the kept end', () => {
-    const t = earlyTimes(1000, 5000, 200, 33.3, 0)
-    assert.ok(Math.abs(t.decideAt - (6000 - 33.3)) < 1e-9)
+  it('the margin is at most half a frame interval', () => {
+    assert.equal(decideMarginOf(40), 6)
+    assert.equal(decideMarginOf(8), 4)
+    const t = earlyTimes(1000, 5000, 200, 8, 0)
+    assert.equal(t.decideAt, 6000 - 4)
+  })
+
+  it('never decides before the start', () => {
+    const t = earlyTimes(1000, 5000, 3, 40, 0)
+    assert.equal(t.startAt, 5997)
+    assert.equal(t.decideAt, 5997)
+  })
+})
+
+describe('shownIsFirstKept', () => {
+  it('is true with no pre-roll, whatever has been presented', () => {
+    assert.equal(shownIsFirstKept(0, null, 1000, 40), true)
+  })
+  it('with pre-roll waits for a presented frame at or past the first kept frame', () => {
+    assert.equal(shownIsFirstKept(30, null, 1000, 40), false)
+    assert.equal(shownIsFirstKept(30, 960, 1000, 40), false)
+    assert.equal(shownIsFirstKept(30, 981, 1000, 40), true)
+    assert.equal(shownIsFirstKept(30, 1040, 1000, 40), true)
   })
 })
 

@@ -61,7 +61,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     +28 ms) raises it;
   - the timing helper: given a frame clock (callback time minus media time, as a median over the last second), S's
     kept end and the lead, it returns both `startAt` and `decideAt`; a start time already past (start at once), a
-    lead longer than the time left, and `decideAt` one frame interval before the kept end.
+    lead longer than the time left, and `decideAt` a margin (at most half a frame interval, 6 ms) before the kept end; `shownIsFirstKept` for the swap rule.
 - [x] 1.2 Give `anotherPlays` and `watchOtherStarts` in `playback/coordinator.ts` an `own` predicate (design D5).
   Verify with `coordinator.test.ts`, which must check that:
   - a paused second element of the same player is not "another", and neither is a second own element that plays
@@ -86,7 +86,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - the standby loads while Play holds and is re-targeted on a draft edit or a seek;
   - the early start: arm from the shown slot's frame clock with the two timers of the timing helper (start the
     standby, unmuted, `data-standby`, one lead before the kept end; decide at the predicted last kept frame, with
-    `onFrame` and `ended` as backstops), and swap one frame interval later; seek the standby to the first kept frame
+    `onFrame` and `ended` as backstops), and swap at the decision when the standby already shows the first kept frame (else on its first frame at or past it); seek the standby to the first kept frame
     less P; sample LEAD and P at every hand-over and reset them on `devicechange`;
   - cancel during the lead (pause, scrub, seek, Previous/Next clip, a yield, an event reload): the standby pauses,
     is sought back to its pre-sought position (first kept frame less P), and is `seeking` until that lands (a second Play meanwhile takes `wait`);
