@@ -1305,9 +1305,9 @@ export function useTimeline({
             playsInline
             aria-hidden="true"
             tabIndex={-1}
-            {...video.handlers}
+            {...video.slotHandlers[0]}
           />
-          {/* The standby slot (seamless-playback D1): rendered, never seen; 2.2 loads and hands over to it. */}
+          {/* Slot B (seamless-playback D1): the standby at first; the hook swaps the roles at a hand-over. */}
           <video
             ref={video.standbyRef}
             className="tl-video"
@@ -1317,6 +1317,7 @@ export function useTimeline({
             muted
             aria-hidden="true"
             tabIndex={-1}
+            {...video.slotHandlers[1]}
           />
         </>
       )}

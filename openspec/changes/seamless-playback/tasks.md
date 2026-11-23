@@ -82,7 +82,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - while paused, only one slot has a `src`;
   - screenshots of the stacked page and the workspace at 390, 1280 and 1440 px, light and dark, with an unturned and
     a 90-degree clip, looked at for size, clipping, and the card layer on top.
-- [ ] 2.2 Preload, start early and hand over in `useTimelineVideo.ts` (design D3, D4):
+- [x] 2.2 Preload, start early and hand over in `useTimelineVideo.ts` (design D3, D4):
   - the standby loads while Play holds and is re-targeted on a draft edit or a seek;
   - the early start: arm from the shown slot's frame clock with the two timers of the timing helper (start the
     standby, unmuted, `data-standby`, one lead before the kept end; decide at the predicted last kept frame, with

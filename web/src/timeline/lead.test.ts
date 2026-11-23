@@ -5,6 +5,7 @@ import {
   earlyTimes,
   frameClock,
   FRESH,
+  keptEndOf,
   leadOf,
   median,
   preRollOf,
@@ -166,5 +167,16 @@ describe('earlyTimes', () => {
   it('decideAt is one frame interval before the kept end', () => {
     const t = earlyTimes(1000, 5000, 200, 33.3, 0)
     assert.ok(Math.abs(t.decideAt - (6000 - 33.3)) < 1e-9)
+  })
+})
+
+describe('keptEndOf', () => {
+  it('is the length with no cut at the end', () => {
+    assert.equal(keptEndOf([], 6000), 6000)
+    assert.equal(keptEndOf([{ from: 1000, to: 2000 }], 6000), 6000)
+  })
+  it('is the start of a cut that runs to the end', () => {
+    assert.equal(keptEndOf([{ from: 1000, to: 2000 }, { from: 5000, to: 6000 }], 6000), 5000)
+    assert.equal(keptEndOf([{ from: 5000, to: 5950 }], 6000), 5000)
   })
 })
