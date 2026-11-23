@@ -318,8 +318,10 @@ adopted; this amendment, with its P calibration, is for the operator to confirm 
   `play()` and presents frames late, so the error is not the latency. Calibrating on the alignment error, with P as
   the second number, moves Firefox's alignment from -28 ms to about 0; it does not by itself pass the hold gate there (see above).
 - **What is accepted.** The first gate's floor was -40 ms; the shipped spec does not claim it. Where P cannot be
-  applied (the incoming clip's first kept frame is its frame 0, so IN = 0, or P has not converged), the first 2 to 3
-  frames of the incoming clip are skipped: §6.10 measured p10 lost -41.5 ms in Firefox and -39.4 ms in Chrome, and a
+  applied (the incoming clip's first kept frame is its frame 0, so IN = 0, or P has not converged), the start of the
+  incoming clip is skipped, by a median of about 12 to 31 ms (0.6 to 1.5 frames; lost p50 -12.0 / -31.0 ms, clock-derived)
+  and at the tail by up to about three frames (the HLD's "2 to 3, up to 5" uses a different metric, the first reported
+  frame's media time): §6.10 measured p10 lost -41.5 ms in Firefox and -39.4 ms in Chrome, and a
   maximum skip of 56.0 and 59.5 ms. The operator accepted this on 2026-11-23. This is a known limit, recorded per
   browser in 3.1.
 - C is worse. A fixed pre-roll of the lead's length only moves the first kept frame later (Chrome 45 to 136 ms lost,
