@@ -212,7 +212,7 @@ export function useTimelineVideo({
     () =>
       watchOtherStarts(
         documentRoot(document),
-        () => videoRef.current,
+        (video) => video === videoRef.current,
         () => {
           operatorStart.current = false
           stopRef.current()
@@ -228,7 +228,7 @@ export function useTimelineVideo({
     }
     const own = operatorStart.current
     operatorStart.current = false
-    if (resumeOrYield(own, anotherPlays(video, document.querySelectorAll('video'))) === 'yield') {
+    if (resumeOrYield(own, anotherPlays((other) => other === video, document.querySelectorAll('video'))) === 'yield') {
       // Another video started while this one was changing file: it keeps the page.
       wantPlay.current = false
       setPlaying(false)
