@@ -1633,8 +1633,9 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     single element of the same session (§6.10, Firefox lost p90 275.1 ms, hold p90 255.5 ms) lost p90 is under half in
     both browsers and hold p90 under half in Firefox (Chrome 50.1 against 83.4 ms). **Known limitations:** leading-cut
     boundaries fail the first gate in both browsers (Firefox lost p90 29.8, hold p90 117; Chrome 20.5 and 83.5), and the
-    learned P correlates with the worse holds (follow-up: drop P); the first presented frame of the incoming clip is 2 to
-    3 frames (up to 5) after its first kept frame; Bluetooth and real-sink latency were not measured and the audio
+    learned P correlates with the worse holds (follow-up: drop P); the first presented frame of the incoming clip is
+    typically 2 to 3 frames (up to 5) after its first kept frame, though the data cannot tell a skipped frame from one
+    reported late (the first reported frame was at or before 0.02 s in 21 of 72 boundaries in Firefox, 15 of 72 in Chrome); Bluetooth and real-sink latency were not measured and the audio
     overlap during the lead was not checked; the quiet re-read route of "The clips shrink under the playhead" is
     unverified (its layout path passes through Ignore clip). Bundle, `npm run build` on `main` and on this change: JS
     707,725 to 720,032 bytes (226,681 to 230,587 gzip -9, +3.9 KB), CSS 107,850 to 107,968 bytes (19,746 to 19,822 gzip

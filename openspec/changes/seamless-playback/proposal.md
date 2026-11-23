@@ -54,7 +54,9 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
   - the hand-over is the Timeline playing on, not a new start;
   - a clip preview releases both elements, as it released the one before.
 - **Use as poster** takes the shown video's frame.
-- **A boundary gate.** Measured in headed Chrome and Firefox over 20 plain boundaries each, with sound on and routed
+- **A boundary gate (first gate, superseded).** The text below is the gate as first proposed; the built code met it
+  only in Chrome on IN = 0. The shipped bounds are those of the 2026-11-23 operator decision below and the spec
+  (research §6.10). Measured in headed Chrome and Firefox over 20 plain boundaries each, with sound on and routed
   to a null sink: at the 90th percentile the play time lost is at most one frame interval and the incoming clip is
   not skipped by more than two, and no frame is held longer than steady play holds one plus one frame. The same
   script is run against today's single element and reported beside it. The measured scrub, frame-step and card
@@ -116,7 +118,8 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
   shown, and an early start with a measured lead: a timer on the playing clip's frame clock, a calibrator, and a
   cancel path for the lead. A simpler fix does not remove the stall: skipping the extra seek, or warming the cache,
   still tears down the decoder at each swap, and the plain at-boundary hand-over misses the gate in both browsers
-  (research §6). The early start is the smallest design that was measured to meet it (design, Research &
+  (research §6). The early start is the smallest design measured; it met the first gate only in Chrome on IN = 0
+  and ships under the relaxed bounds of the 2026-11-23 operator decision (research §6.10; design, Research &
   Decisions).
 - **Depends on** the last change of the plain clip bin series (`docs/editor-workspace.md`), and through it on
   `editor-shortcuts` and `clip-context-menu`. These touch the same Timeline and workspace files.
