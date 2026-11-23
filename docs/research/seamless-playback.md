@@ -719,3 +719,202 @@ ready standby when `startFrom` leaves the clip.
   same hook for the built and the single-element runs).
 - Raw results: `gate/results/gate-firefox-ff1.json`, `gate-chrome-ch1.json`, `scrub-*`, `step-*`, `card-*`, `readout-*`,
   `sinkinputs.log`; functional output `pw/out31/ffF.txt`, `chF.txt` (session scratchpad, not in the repo).
+
+### 6.10 Fixed swap (task 3.1 re-measured, 2026-11-23)
+
+The fix is `b9240998` (the standby is swapped in the decision's task, and the decision is made just before the kept
+end) plus `097c0deb` (Play within the end slack hands over to the standby). Everything here ran on `097c0deb`, the head
+of `feat/seamless-playback`, headed, on the host's display, Firefox 160.0.1 first and then Chrome 158.0.8127.36.
+**The boundary gate of D7 still fails in Firefox (the primary browser) on both events, and in Chrome on the
+leading-cut event. It passes in Chrome on the IN = 0 event.** Nothing was tuned after the first headed run and no
+definition was changed. The hold fell sharply on IN = 0 (Firefox p50 117 to 51 ms, Chrome p50 83 to 33 ms), and the new
+failure is the leading-cut case, where the pre-roll path (P above 0) now carries the hold.
+
+#### Setup, as §6.9 unless stated
+
+- **Service and library.** No event of the dev library (`auto-reel-dev/library`) has leading cuts at plain boundaries
+  (the one trimmed clip, in `2024-08-20 - Två kapitel - Tjörn`, is a trailing cut after a chapter card). A scratch
+  library was built in the session scratchpad (`lib/2024/`), served read-only by `auto-reel serve` on port 8102 from the
+  main checkout's venv, and stopped at the end. It holds two events over the same four 6.02 s, 50 fps clips (symlinks to
+  `auto-reel-dev/clips`, the clips §6.9 used, not the 348 MB originals of `auto-reel-media`, which was not touched; the
+  proxies came from the shared proxy cache, nothing was re-encoded):
+  - **IN = 0:** `2024-06-27 - Grillning med grannar`, the event of §6.9.
+  - **Leading cut:** `2024-06-28 - Ledande klipp`, `reel.yaml` with `trims: [{in: 0.0, out: 0.5}]` on clips 2 to 4, so
+    each of the three plain boundaries enters its clip at IN = 0.5 s. Clip 1 is uncut.
+- **Builds.** The built app is this branch's Vite (podman, port 5174, `sp-vite`). The single element is `web/` of
+  `d11e2345` (podman, 5175, `sp-vite-base`), the same service, the same hook. Both containers were removed.
+- **Browsers and sound.** Flatpak Firefox and Chrome, fresh profiles, `PULSE_SINK=claude_null` on a PipeWire null sink
+  (`module-null-sink`, module 536870916), **sound on**. The watchdog logged every sink input (352 snapshots); of the 313
+  stream entries of my instances, 309 are on `claude_null` and 4 are an unrouted, corked Firefox stream (sink `?`, as in
+  §6.9). `ABORT.txt` was never written. The default sink (the operator's headset) was never changed. The module was
+  unloaded at the end: `pactl list short sinks` no longer lists `claude_null`, and the default sink is still the
+  headset. My browsers were stopped by process id.
+- **Visibility.** KWin keep-above loop as in §6.9. `visibilityState` was sampled every 2 s in each of the 96 loops:
+  0 `hidden` samples, `hasFocus()` true at the end of each.
+- **Script and plan.** Unchanged: 0:04 of `s1710001.mp4`, Play, 22 s, three plain boundaries per loop, a fresh tab per
+  block, writes refused in the page.
+  - IN = 0 event: `built` 12 loops, `single` 8, `built` 12 per browser (72 built and 24 single boundaries).
+  - Leading-cut event: `built` 6, `single` 4, `built` 6 per browser (36 built and 12 single boundaries).
+- **Definitions.** D7's, as in §6.9. For the leading-cut event "lost" subtracts the kept span the clocks should have
+  advanced, `6020 - IN * 1000` ms, in place of 6020 ms (the incoming clock starts at IN), and the filter on the first
+  frame's media time is IN + 0.6 s in place of 0.6 s. Same percentiles, same limits (hold limit = median steady + 20 ms).
+  The hand-over record is now matched up to 60 ms after the first incoming frame, since the swap runs in the decision's
+  task; the 12 hand-overs of the first analysis that showed `None` were swaps logged just after that frame, and all 216
+  built hand-overs are `timer`.
+
+#### The boundary gate, IN = 0 event
+
+ms. "valid" = steady play kept its cadence.
+
+Firefox 160.0.1:
+
+| Case | n (valid / all) | Lost p10 / p50 / p90 | Hold p50 / p90 / max | Steady median | Hold limit | Max skip |
+|---|---|---|---|---|---|---|
+| **built** (valid) | 71 / 72 | -41.5 / -12.0 / 7.0 | 51.0 / 83.0 / 134.0 | 50.0 | 70 | 56.0 |
+| built (all) | 72 | -41.4 / -12.2 / 6.7 | 51.0 / 83.0 / 134.0 | 50.0 | 70 | 56.0 |
+| single element (valid) | 8 / 24 | 222.2 / 264.0 / 275.1 | 242.0 / 255.5 / 266.0 | 50.0 | 70 | 0 |
+| single element (all) | 24 | 217.3 / 238.8 / 269.4 | 58.5 / 250.0 / 266.0 | 183.0 | 203 | 0 |
+
+Chrome 158.0.8127.36:
+
+| Case | n (valid / all) | Lost p10 / p50 / p90 | Hold p50 / p90 / max | Steady median | Hold limit | Max skip |
+|---|---|---|---|---|---|---|
+| **built** (valid) | 72 / 72 | -39.4 / -31.0 / -14.6 | 33.5 / 50.1 / 66.7 | 33.5 | 54 | 59.5 |
+| single element (valid) | 10 / 24 | 127.4 / 130.6 / 141.3 | 83.4 / 83.4 / 83.5 | 50.0 | 70 | 0 |
+| single element (all) | 24 | 128.3 / 138.1 / 152.9 | 83.4 / 83.5 / 100.0 | 66.7 | 87 | 0 |
+
+The single element's steady play is irregular in both browsers (8 and 10 valid boundaries of 24), so its rows rest on
+those; they only tell that the old hand-over still loses 130 to 260 ms and holds 83 to 266 ms.
+
+**Verdict, IN = 0 event** (valid boundaries):
+
+| Term | Firefox built | Chrome built |
+|---|---|---|
+| p90 lost at most 20 ms | 7.0: yes | -14.6: yes |
+| p10 lost at least -40 ms | -41.5: **no** (by 1.5 ms; -41.4 over all 72) | -39.4: yes |
+| p90 hold at most steady + 20 | 83.0 against 70: **no** | 50.1 against 54: yes |
+| no hold over 100 ms | max 134.0: **no** (1 of 72 over 100; 6 over 83) | max 66.7: yes |
+| no skip over 60 ms | 56.0: yes | 59.5: yes (0.5 ms under) |
+| **Gate** | **FAILS** | **PASSES** |
+
+Against §6.9 (built before the fix): Firefox hold p50 / p90 / max 117 / 133 / 150 became 51 / 83 / 134, p10 lost -40.6
+became -41.5, p90 lost 7.2 became 7.0. Chrome hold p50 / p90 / max 83 / 117 / 133 became 33.5 / 50.1 / 66.7, p10 lost
+-40.0 became -39.4. The hold tail is the thing that moved; the lost floor did not (the skipped start is the same, see
+below).
+
+#### The boundary gate, leading-cut event (IN = 0.5 s, P exercised)
+
+Firefox 160.0.1:
+
+| Case | n (valid / all) | Lost p10 / p50 / p90 | Hold p50 / p90 / max | Steady median | Hold limit | Max skip |
+|---|---|---|---|---|---|---|
+| **built** (valid) | 35 / 36 | -33.0 / 3.0 / 29.8 | 84.0 / 117.0 / 134.0 | 50.0 | 70 | 40.0 |
+| built (all) | 36 | -33.0 / 1.5 / 29.8 | 84.0 / 117.0 / 134.0 | 50.0 | 70 | 40.0 |
+| single element (valid) | 7 / 12 | 178.5 / 191.0 / 237.2 | 183.0 / 226.8 / 267.0 | 50.0 | 70 | 0 |
+| single element (all) | 12 | 179.6 / 209.5 / 280.2 | 183.0 / 215.3 / 267.0 | 51.0 | 71 | 0 |
+
+Chrome 158.0.8127.36:
+
+| Case | n (valid / all) | Lost p10 / p50 / p90 | Hold p50 / p90 / max | Steady median | Hold limit | Max skip |
+|---|---|---|---|---|---|---|
+| **built** (valid) | 36 / 36 | -19.2 / -2.7 / 20.5 | 66.7 / 83.5 / 116.7 | 33.5 | 54 | 39.3 |
+| single element (all) | 12 | 127.2 / 137.4 / 153.8 | 83.4 / 83.5 / 100.1 | 66.7 | 87 | 0 |
+
+(The single element had 1 valid boundary of 12 in Chrome, so only its "all" row is shown.)
+
+**Verdict, leading-cut event** (valid boundaries, built):
+
+| Term | Firefox | Chrome |
+|---|---|---|
+| p90 lost at most 20 ms | 29.8: **no** | 20.5: **no** (by 0.5 ms) |
+| p10 lost at least -40 ms | -33.0: yes | -19.2: yes |
+| p90 hold at most steady + 20 | 117.0 against 70: **no** | 83.5 against 54: **no** |
+| no hold over 100 ms | max 134.0: **no** (9 of 36 over 100 across both blocks) | max 116.7: **no** (3 of 36) |
+| no skip over 60 ms | 40.0: yes | 39.3: yes |
+| **Gate** | **FAILS** | **FAILS** |
+
+The lost floor is now met (the leading cut has a real pre-roll to align with, so the incoming start is no longer
+skipped), but the upper side fails: the hand-over now costs time (positive lost) and holds longer.
+
+#### LEAD and P as observed (built, `timer` hand-overs, every one)
+
+| Event | Browser | LEAD median (min to max) | LEAD clamp hits (0 / 250) | P median (min to max) | P clamp (40) hits |
+|---|---|---|---|---|---|
+| IN = 0 | Firefox 160 | 52 ms (40 to 80) | 0 / 0 | 0 (0 to 0) | 0 |
+| IN = 0 | Chrome 158 | 69 ms (40 to 80) | 0 / 0 | 0 (0 to 0) | 0 |
+| leading cut | Firefox 160 | 65 ms (40 to 83) | 0 / 0 | 15 ms (0 to 38) | 0 |
+| leading cut | Chrome 158 | 71.5 ms (40 to 84) | 0 / 0 | 29.5 ms (0 to 40) | 10 of 36 |
+
+**P is above 0 in Firefox on the leading-cut block**, as the task asked: 32 of 36 hand-overs had P above 0 (median 15, up
+to 38 ms), and in Chrome 31 of 36 (median 29.5, 10 at the 40 ms clamp). The first boundary of each block runs with P = 0
+(nothing learned yet), which is the 4 and 5 hand-overs with P = 0.
+
+#### Where the hold comes from now (diagnostic, not part of the gate)
+
+On the IN = 0 event the swap is no longer late: the last reported frame of the outgoing to the swap is 39 ms (p50, p10
+to p90 29.5 to 48.5) in Firefox, against 59 (43 to 77) in §6.9, and 27 ms (14.6 to 40.9) in Chrome against 34 (24 to
+47). The hold is now the display cadence: Firefox reports every other frame, so a 50 ms hold is two reported
+intervals, and 6 of 72 Firefox boundaries held more than 83 ms.
+
+On the leading-cut event the hold depends on P:
+
+| Event, browser | Hold, P = 0: n, p10 / p50 / p90 | Hold, P above 0: n, p10 / p50 / p90 | Lost, P above 0, p10 / p50 / p90 |
+|---|---|---|---|
+| leading cut, Firefox | 4: 50.0 / 50.0 / 73.8 | 32: 51.0 / 84.0 / 117.0 | -33.0 / 4.0 / 30.0 |
+| leading cut, Chrome | 5: 40.1 / 50.1 / 76.8 | 31: 49.9 / 66.7 / 83.5 | -19.2 / -2.6 / 20.7 |
+
+So with P = 0 the hold is the same 50 ms as on the IN = 0 event, and the extra hold and the positive lost come with the
+pre-roll (the learned P). The hold of the incoming clip also grows with the boundary's position in the loop (Firefox
+median, incoming clip 2, 3, 4: 50 to 75, 84 to 92, 100 to 117 ms across the two blocks), which is when P has been learned
+and is largest. This is a reading of the numbers; the code path that carries P was not instrumented in this run and
+nothing was changed to test it. What it points at is the pre-roll hand-over, not the swap timing.
+
+#### Per-term verdict, both events, both browsers
+
+| Gate term | Firefox IN = 0 | Firefox cut | Chrome IN = 0 | Chrome cut |
+|---|---|---|---|---|
+| p90 lost at most 20 | yes (7.0) | no (29.8) | yes (-14.6) | no (20.5) |
+| p10 lost at least -40 | no (-41.5) | yes (-33.0) | yes (-39.4) | yes (-19.2) |
+| p90 hold at most steady + 20 | no (83 / 70) | no (117 / 70) | yes (50.1 / 54) | no (83.5 / 54) |
+| no hold over 100 | no (134) | no (134) | yes (66.7) | no (116.7) |
+| no skip over 60 | yes (56.0) | yes (40.0) | yes (59.5) | yes (39.3) |
+| Gate | fails | fails | passes | fails |
+
+#### Functional scenarios re-run (Playwright, headless, muted, writes intercepted, HEAD)
+
+Firefox 159 and Chromium, on the IN = 0 event.
+
+- **"A plain boundary", first-frame clause: still not met in the strict reading.** The incoming clip's first reported
+  frame is at media time 0.06 s (Firefox 159) and 0.04 s (Chromium), so 2 to 3 frames are skipped before the first one
+  reported. In the headed gate, over 72 IN = 0 boundaries: Firefox's first reported frame is at or before 0.02 s in 21,
+  at or before 0.04 s in 55, and after 0.06 s in 3 (max 0.10); Chrome at or before 0.02 s in 15, at or before 0.04 s in
+  64, after 0.06 s in 2 (max 0.08). Neither browser reports every frame (§6.5), so a first reported frame at 0.02 to
+  0.04 s may be frame 0 or 1 reported late; the data cannot tell. The skipped start shows as the lost floor of the
+  table (Firefox p10 -41.5, Chrome p10 -39.4). Blank samples 0, proxy requested before the clip ended and not at the
+  swap, readout in the next clip: all fine. The check's own threshold (0.12 s) still passes; the clause is therefore
+  still open for the operator (design D4's "What is accepted" is closer to the data now, about 12 to 31 ms median
+  skip, but the spec wording "its first frame" is not strictly true).
+- **"Pause during the lead": passes in both, including the last clause.** After the pause the shown slot is paused at
+  5.97 s (Firefox) and 5.96 s (Chromium), the standby paused at 0.005 s on `s1710002.mp4`, no frame of it shown. Play
+  then hands over through the standby (`handover play`, first frame at 0.06 s, max gap 50.2 ms in Firefox and 33.4 ms
+  in Chromium, 0 blank samples).
+- **"The clips shrink under the playhead": triggered through a draft edit, not through the quiet re-read.** In Edit
+  mode the page re-reads only the render verdict (`refreshVerdict`), so a quiet re-read cannot take a clip away from
+  the Timeline, and none could be forced from the page. The same layout path was reached by selecting the clip under
+  the playhead (`s1710002.mp4` at 0:02) and pressing "Ignore clip": the Timeline stayed on the page with 3 clips, the
+  playhead went to the start (the opening card, "title card for the opening, 0.0 s of 7.0 s", card layer opacity 1.0
+  over the first clip's slot), no page error, no refused write beyond the intercepted ones (none). Blank video samples
+  (5 in Firefox, 6 in Chromium) were under the opaque card layer. Passes in both browsers for that route; the
+  re-read route itself remains **unverified** (a unit-level test of `position.ts` covers a clip that is gone).
+
+#### What this run could not verify
+
+- The operator's real audio device (a null sink has no hardware clock), and the audible overlap in the lead.
+- Display refresh other than 60 Hz; other proxies than the four 6.02 s, 50 fps ones; the readout event of the spec.
+- Scrub, frame step, card hand-over and readout were not re-run (not touched by the fix; §6.9 holds them).
+- The quiet re-read route of "The clips shrink under the playhead".
+- Instrumentation cost, as in §6.9 (the same hook for built and single).
+- Raw results: `gate/results/gate-firefox-ff-in0.json`, `gate-firefox-ff-lead.json`, `gate-chrome-ch-in0.json`,
+  `gate-chrome-ch-lead.json`, `sinkinputs.log` (session scratchpad, not in the repo); the analysis is
+  `gate/analyze_gate2.py` and `gate/diag_fixed.py`; the functional runs `pw/f31.py` (`plain`, `pause-in-lead`,
+  `clips-shrink`).
