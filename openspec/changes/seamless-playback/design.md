@@ -135,7 +135,8 @@ already running when S's last kept frame has had its time.
     0, so P stays within about a millisecond of 0 there (a pre-roll costs it 45 to 136 ms, §6.7).
 - **Arming.** The timing helper (`lead.ts`) takes S's frame clock (median of callback time minus `mediaTime` over the
   last second), S's kept end and LEAD, and returns **two** times: `startAt`, S's kept end minus LEAD, and `decideAt`,
-  the predicted time of S's last kept frame (the kept end minus one frame interval). The hook sets one timer for
+  the kept end less a margin (6 ms, at most half a frame interval, as timer lateness was at most 5 ms), so S's last
+  kept frame is presented before the pause (research §6.9: with the decision one frame early it was never shown). The hook sets one timer for
   each, on the frame clock, not on `onFrame`: Firefox reports only every other frame, so a decision on the first
   reported frame can land one frame late and show a frame past the kept end (research §6.7). `onFrame` returning
   `end`, and `ended`, are **backstops** that run the decision if the timer has not. When the start timer fires,
@@ -149,8 +150,11 @@ already running when S's last kept frame has had its time.
 - **Decision (S's last kept frame, at `decideAt`).** Mark S's pause as the hook's own, `S.pause()`,
   `playhead.set(want)`, bind the coalescer to T and `coalescer.sync(want)`. Nothing is in flight then: `arm()`
   checks `!coalescer.busy()` before `onFrame`.
-- **Swap.** One frame interval after the decision, and no earlier than T's first presented frame at or past the first
-  kept frame, T loses `data-standby`, S gains it and is muted, and the swap listeners run (D6). The calibrator takes
+- **Swap.** On the timer path, in the decision's own task (the same paint as S's pause), when T's shown picture is
+  already the first kept frame: with P = 0 the pre-sought frame is frame IN itself, already decoded and composited at
+  opacity 0; with P > 0 once a presented frame has `mediaTime` at or past the first kept frame less half a frame
+  interval (`shownIsFirstKept`), swapped on that frame's callback with no extra wait. The earlier one-frame wait for a
+  later callback cost 40 to 60 ms in Firefox and 20 to 30 in Chrome (§6.9). T loses `data-standby`, S gains it and is muted, and the swap listeners run (D6). The calibrator takes
   its LEAD and P samples here. Then S loads `standbyTarget(…, want.clip)`, and `arm()` follows T.
 - **Cancel during the lead.** Between the start and the swap, a pause, a scrub, a seek, Previous/Next clip, a yield
   (D5) or an event reload pauses T, sets its `currentTime` back to its pre-sought position (the first kept frame less P), and sends
