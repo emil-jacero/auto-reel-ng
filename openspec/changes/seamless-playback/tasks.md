@@ -131,8 +131,9 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     frame"). The first reported frame was at media time 0.06 to 0.1 s (3 to 5 frames skipped) in the functional run; the
     gate shows skips up to 53 ms (Firefox) and 56.6 ms (Chrome). The functional check did not enforce that clause, so an
     earlier version of this note counted it as a pass.
-  - **FAILS: "Pause during the lead", its last clause** ("Play then crosses the boundary as before"): Play within the end
-    slack takes `startFrom`'s next-clip start and loads into the shown slot (2 to 3 blank samples), not the ready standby.
+  - **Fixed, re-verified: "Pause during the lead", its last clause.** `play()` now asks `atPlay` (standby.ts): Play within
+    the end slack hands over to (or waits for) the standby that holds the next clip's start, instead of loading it into the
+    shown slot. Playwright `pause-in-lead` passes in Firefox and Chromium (handover `play`, 0 blank samples after Play).
   - **Not exercised: "The clips shrink under the playhead"** (no quiet re-read of the clips could be triggered).
     Explicitly unverified.
   - Every other scenario of both deltas passes in both browsers, except the finger swipe (Chromium only, not run in Firefox). Scrub, frame step, card hand-over and readout pass.
@@ -147,7 +148,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   2. First-frame clause: design D4's "What is accepted" (about 28 ms skipped, Firefox only, IN = 0) is contradicted by
      the measurements (median about 30 ms and up to 57 ms in Chrome too, with IN = 0 the common case). Change the spec
      clause or the design, or fix the alignment.
-  3. "Pause during the lead": either `play()` hands over to a ready standby when `startFrom` leaves the clip, or the last
+  3. (DONE, see above) "Pause during the lead": either `play()` hands over to a ready standby when `startFrom` leaves the clip, or the last
      clause is reworded (e.g. "Play then goes on into the next clip's first kept frame").
   4. "The clips shrink under the playhead": find a way to trigger the clips re-read, or accept it as unverified.
 - [ ] 3.2 Record the change (BLOCKED on the open items of 3.1; the HLD must not state a measured gate the code does not meet):

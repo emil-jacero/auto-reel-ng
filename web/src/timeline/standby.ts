@@ -103,3 +103,17 @@ export function atBoundary(s: Standby, want: Target, address: string): 'hand-ove
   }
   return s.kind === 'loading' || s.kind === 'seeking' ? 'wait' : 'hand-over'
 }
+
+/**
+ * Play from inside the end slack of a clip goes on at the next clip (`startFrom`): when the
+ * standby already holds that very target, Play hands over to it (or waits for it) as the
+ * boundary does, and the shown slot is never loaded with the next clip. Any other start loads.
+ */
+export function atPlay(
+  s: Standby,
+  at: { clip: number },
+  start: Target,
+  address: string,
+): 'hand-over' | 'wait' | 'load' {
+  return start.clip === at.clip ? 'load' : atBoundary(s, start, address)
+}

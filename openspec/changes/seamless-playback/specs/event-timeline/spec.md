@@ -64,11 +64,14 @@ SHALL stay on screen until it is. A black title card keeps the card's hand-over.
 
 ### Requirement: The Timeline's standby video is never seen or counted as a player, and heard only as the incoming clip
 
-The Timeline SHALL load a standby `<video>` only once it plays (the element exists beside the shown one, empty until then; a pause keeps what it holds, as design D3 says), with the clip play goes on into. The standby SHALL be
-invisible, hidden from assistive technology and out of the Tab order, and muted and not counted as playing until its
-early start; from then until it takes over it plays unmuted as the Timeline's own play. A pause, scrub, seek, Previous
-or Next clip, yield or reload SHALL put a started standby back at its pre-sought position. A preview and closing the
-Timeline SHALL release it.
+The Timeline SHALL load a standby `<video>` only once it plays, with the clip play goes on into (design D3). The standby SHALL be
+invisible, hidden from assistive technology, out of the Tab order, and muted and not counted as playing until its early
+start, then play unmuted until it takes over. A pause, scrub, seek, Previous or Next clip, yield or reload SHALL put a
+started standby back at its pre-sought position; Play within the end slack SHALL hand over to it. A preview and closing release it.
+
+#### Scenario: Play within the end slack hands over to the standby
+- **WHEN** the operator pauses during the lead 50 ms before a clip's end, and presses Play
+- **THEN** play goes on from the standby that holds the next clip's first kept frame, and the shown video is not loaded with that clip, so no blank frame is shown
 
 #### Scenario: Nothing loads ahead while paused
 - **WHEN** Edit mode opens on an event and the operator moves the playhead without pressing Play
