@@ -87,7 +87,7 @@ The operator chose the proper fix only, with no interim mitigation shipped on it
 
 - `event-timeline`:
   - ADDED "Play crosses a clip boundary without a pause" (with the measured gate) and "The Timeline's standby video
-    is never seen, never counted as a player, and heard only as the incoming clip's sound".
+    is never seen or counted as a player, and heard only as the incoming clip".
   - MODIFIED "The playhead scrubs one video": one shown video, and the flash is accepted only for a move of the
     playhead.
   - MODIFIED "Edit mode holds one video at a time": one player, whose standby exists only while it plays.

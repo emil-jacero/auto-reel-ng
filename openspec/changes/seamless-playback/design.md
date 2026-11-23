@@ -67,18 +67,35 @@ export function standbyTarget(clips: readonly Playable[], gaps: readonly { clip:
 export type Standby =
   | { kind: 'idle' }
   | { kind: 'loading' | 'seeking' | 'ready'; target: Target; address: string }
-export function standbyStep(s: Standby, e: 'loadedmetadata' | 'seeked' | 'error' | 'released'): Standby
-/** At the start of the lead before the playing clip's end (and again if it is missed): hand over, wait for the
- *  standby (it holds `want` and is on its way), or load as today. */
+  | { kind: 'started'; target: Target; address: string; playAt: number }   // the early start has run (the lead)
+export type StandbyEvent =
+  | 'loadedmetadata' | 'seeked' | 'error' | 'released'
+  | 'cancelled'                                  // the lead was cancelled: the hook paused T and re-sought it
+  | { type: 'started'; playAt: number }          // `T.play()` was called at `playAt` (performance.now)
+export function standbyStep(s: Standby, e: StandbyEvent): Standby
+/** At the early start's timer and at the decision on S's last kept frame (and again if it is missed): hand over,
+ *  wait for the standby (it holds `want` and is on its way), or load as today. */
 export function atBoundary(s: Standby, want: Target, address: string): 'hand-over' | 'wait' | 'load'
 ```
 - **Loading.** `loading` sets `src`, the clip's turn and `muted`. `loadedmetadata` leads to `seeking`, with
   `currentTime = seekSeconds(ms, fps)`. `seeked`, together with `readyState >= 2` and not `seeking`, leads to
   `ready`.
+- **Started.** `{type:'started'}` is valid only from `ready` and leads to `started`, which keeps the `play()` time
+  (`playAt`), the sample the lead calibrator needs (D4). Any other state ignores it, so a start can never happen on
+  a standby that is still seeking.
+- **Cancelled.** `cancelled` is valid from `started` and leads to `seeking`, never to `ready`: the hook has paused T
+  and set `currentTime` back to the first kept frame, and only that seek's `seeked` (with `readyState >= 2`) leads to
+  `ready`. Until then `atBoundary` answers `wait`, so a second Play, or the next arming, cannot hand over to an
+  element that is seeking. `cancelled` from any other state is ignored.
+- **`atBoundary`.** `hand-over` for `ready` and `started` holding `want` at the same address; `wait` for `loading`
+  or `seeking` holding it; `load` for `idle`, an other target or an other address. The early start's timer fires only
+  on `ready`; from `started` the decision hands over at once.
 - **When it goes back to `idle`.** A load error does, silently and with no retry for that address while the clip
   plays: the fallback load on the shown slot diagnoses it as today. So does a new target, which re-points the slot.
 - **Tests.** `standby.test.ts` covers `standbyTarget` (leading cut, a clip cut whole, a black-card gap, the last
-  clip) and every transition.
+  clip) and every transition, including `started` (from `ready` only, `playAt` kept, ignored elsewhere),
+  `cancelled` (to `seeking`, then `seeked` to `ready`, ignored elsewhere), an error and a release while `started`,
+  and `atBoundary` on a cancelled standby that is still seeking (`wait`).
 
 ### D3. When the standby loads
 - **The trigger.** It loads only while the operator's Play holds (`wantPlay`). The target is computed on the shown
@@ -93,33 +110,53 @@ export function atBoundary(s: Standby, want: Target, address: string): 'hand-ove
   reaches the operator's state.
 
 ### D4. The hand-over (early start)
-The standby T is always sought exactly to the incoming clip's first kept frame (no pre-roll, so it works at IN = 0)
-and is started **before** the outgoing slot S ends, so that T's audio start-up and clock are already running when S's
-last kept frame has had its time.
+The standby T is sought to the incoming clip's first kept frame, less a learned pre-roll P (0 unless the session
+needs it, below), and is started **before** the outgoing slot S ends, so that T's audio start-up and clock are
+already running when S's last kept frame has had its time.
 
-- **The lead (`timeline/lead.ts`, pure).** LEAD is the session's play start-up latency: the time from `T.play()` to
-  T's first presented frame past its sought frame.
-  - It is the running median of the last 9 hand-overs, clamped to [0, 250] ms, with 40 ms before the first one.
-  - It is measured at every hand-over, and reset to 40 ms on `navigator.mediaDevices` `devicechange` (a new audio
-    device has another latency).
-- **Arming.** From S's frame clock (the `requestVideoFrameCallback` callback time minus `mediaTime`, median over the
-  last second) the hook schedules the start at S's kept end minus LEAD (`timeline/lead.ts`'s timing helper takes the
-  frame clock, the kept end and LEAD, and returns when to start). When it fires, `atBoundary(standby, want, address)`
-  is asked; if the answer is not `hand-over`, nothing starts early and the boundary falls back to `wait` or `load`.
+- **The calibrator (`timeline/lead.ts`, pure).** It learns two numbers per session from every hand-over:
+  - **LEAD**, the play start-up latency: the time from `T.play()` (the `playAt` of D2's `started` state) to T's first
+    presented frame. It is the running median of the last 9 hand-overs, clamped to [0, 250] ms, 40 ms before the
+    first one.
+  - **P**, the pre-roll, learned from the **signed alignment error** of the incoming clip: its position on its own
+    frame clock (callback time minus `mediaTime`, median over its first presented frames) at the swap, against the
+    position it should have (the first kept frame plus the real time since the decision). Positive is T ahead (content
+    skipped). P is the running median (last 9) of the positive errors, clamped to [0, 40] ms (two frames), 0 before
+    the first hand-over, and never more than the incoming clip's in-point (IN = 0 has no frames before it, so P is 0
+    there). A negative error (content lost) does not change P; it shows in LEAD's next samples.
+  - Both reset (LEAD 40 ms, P 0) on `navigator.mediaDevices` `devicechange`.
+  - **Why two numbers.** A single LEAD fed with `play()` to first frame cannot align Firefox. Its clock starts at
+    `play()` and its frames arrive late, so P = 0 runs 26 to 30 ms ahead whatever LEAD is (`early-24-0`, `early-20-0`:
+    research §6.7). The pre-roll puts the frames the clock skips before the first kept frame. Chrome's error is about
+    0, so P stays 0 there (a pre-roll costs it 45 to 136 ms, §6.7).
+- **Arming.** The timing helper (`lead.ts`) takes S's frame clock (median of callback time minus `mediaTime` over the
+  last second), S's kept end and LEAD, and returns **two** times: `startAt`, S's kept end minus LEAD, and `decideAt`,
+  the predicted time of S's last kept frame (the kept end minus one frame interval). The hook sets one timer for
+  each, on the frame clock, not on `onFrame`: Firefox reports only every other frame, so a decision on the first
+  reported frame can land one frame late and show a frame past the kept end (research §6.7). `onFrame` returning
+  `end`, and `ended`, are **backstops** that run the decision if the timer has not. When the start timer fires,
+  `atBoundary(standby, want, address)` is asked and only `hand-over` from `ready` starts early; otherwise nothing
+  starts, and the boundary falls back to `wait` or `load`.
 - **Start.** `resumeOrYield(false, anotherPlays(own, videos))`: when another player plays, the Timeline yields (it
-  stops, and nothing starts). Otherwise `T.muted = false` and `T.play()`. T stays `data-standby` (opacity 0) and
-  **unmuted** through the lead: muting it during the lead makes it skip 24 to 47 ms of the incoming clip (research
-  §6.7), because a muted element has no audio start-up and its clock runs ahead of its first frame.
-- **Decision (S's last kept frame).** Mark S's pause as the hook's own, `S.pause()`, `playhead.set(want)`, bind the
-  coalescer to T and `coalescer.sync(want)`. Nothing is in flight then: `arm()` checks `!coalescer.busy()` before
-  `onFrame`.
-- **Swap.** One frame interval after the decision, T loses `data-standby`, S gains it and is muted, and the swap
-  listeners run (D6). Then S loads `standbyTarget(…, want.clip)`, and `arm()` follows T.
+  stops, and nothing starts). Otherwise `T.muted = false`, `T.play()` and the `started` event with `playAt`. T stays
+  `data-standby` (opacity 0) and **unmuted** through the lead: muting it during the lead makes it skip 24 to 47 ms of
+  the incoming clip (research §6.7), because a muted element has no audio start-up and its clock runs ahead of its
+  first frame.
+- **Decision (S's last kept frame, at `decideAt`).** Mark S's pause as the hook's own, `S.pause()`,
+  `playhead.set(want)`, bind the coalescer to T and `coalescer.sync(want)`. Nothing is in flight then: `arm()`
+  checks `!coalescer.busy()` before `onFrame`.
+- **Swap.** One frame interval after the decision, and no earlier than T's first presented frame at or past the first
+  kept frame, T loses `data-standby`, S gains it and is muted, and the swap listeners run (D6). The calibrator takes
+  its LEAD and P samples here. Then S loads `standbyTarget(…, want.clip)`, and `arm()` follows T.
 - **Cancel during the lead.** Between the start and the swap, a pause, a scrub, a seek, Previous/Next clip, a yield
-  (D5) or an event reload pauses T and seeks it back to its first kept frame. S stays shown, and the Timeline goes on
-  as that action says.
+  (D5) or an event reload pauses T, sets its `currentTime` back to the first kept frame (less P), and sends
+  `cancelled` (D2). The standby is `seeking` until that seek lands, and `atBoundary` answers `wait` meanwhile. S
+  stays shown, and the Timeline goes on as that action says. A cancelled start gives no calibrator sample.
 - **`wait`:** S is paused (its own pause) and holds its last frame, and a flag like `handOverWait` is set. The
-  standby's `seeked` runs the hand-over (start, then the swap as above, with no lead to spend).
+  standby's `seeked` runs the hand-over: `T.play()` now, and the swap on T's first presented frame at or past its
+  first kept frame, not one frame after the decision (that has passed, and would show T's still frame for the whole
+  play start-up, 66 to 150 ms in Chrome). This path is a fallback and does not have to meet the gate; it must show
+  no blank frame and no frame of the wrong clip.
 - **`load`:** today's path: `moveVideo(want)` on S.
 - **The `ended` backstop** runs the same `advance()`.
 - **A black-card gap** keeps `enterCard`, with the anchor loaded into the shown slot during the card.
@@ -226,28 +263,42 @@ allow it.
 primary browser is **Firefox**; Chrome must still work.
 **Explored**:
 - A. Plain at-boundary hand-over: `T.play()` on S's last kept frame, swap on T's first frame.
-- B. Early start: `T.play()` about LEAD before S's kept end, T sought exactly to its first kept frame (D4).
-- C. Early start with T muted until the swap, or with a pre-roll (T sought before its first kept frame).
+- B. Early start: `T.play()` about LEAD before S's kept end, T unmuted, sought exactly to its first kept frame (P = 0).
+- C. Early start with T muted until the swap, or with a fixed pre-roll equal to the lead.
+- B+. Early start with a calibrated pre-roll: P learned from the signed alignment error (D4), 0 where the browser
+  needs none.
 
-**Decision**: B. A is rejected.
+**Decision**: B+ (B with P learned). A and C are rejected. **Firefox P = 0 has no measured pass, so B alone is not
+adopted; this amendment, with its P calibration, is for the operator to confirm before task 1.1.**
 **Rationale**:
 - A fails the gate in both browsers. Headed, p90 lost of the two-element swap is 21 ms in Firefox 160 (frame clock;
   hold p90 117 ms against 86 ms allowed), 84 to 106 ms in Chrome with a null sink and 167 to 215 ms in Chrome with no
   sink (§6.3, §6.6, §6.7). Task 0.2's STOP condition 1 held for the plain design.
-- B meets the gate where it was tried: Chrome with the null sink (`early-66-0`: p90 lost -10 ms, hold p90 66 ms
-  against 70) and with no sink (`early-150-0`: -12 ms, hold 66 ms); Firefox with one frame of pre-roll (`early-20-20`:
-  -5 ms, hold p90 52 ms against 60). Firefox's own result sits at the 40 ms frame-report resolution, so it is the
-  least certain of them, and it is why the lead is measured per session, not fixed.
-- C is worse. A pre-roll of the same length as the lead only moves the first kept frame later (Chrome 45 to 136 ms
-  lost, holds 180 to 283 ms). Muting T until the swap skips 24 to 47 ms of the incoming clip, because the audio
-  start-up is the cost being hidden. Pre-seeking with no pre-roll and an unmuted early `play()` is the one that works
-  in Chrome; in Firefox P = 0 ran 26 to 30 ms ahead (`early-24-0`), which the per-hand-over calibration and the
-  clamp around it are meant to absorb. Task 3.1 re-measures this on the built code.
-- The lead depends on the machine and the audio device. A running median of the real hand-overs, reset on
-  `devicechange`, replaces a constant.
+- The evidence for early start, per browser (§6.7):
+  - **Chrome passes with P = 0**: null sink `early-66-0` (p90 lost -10 ms, hold p90 66 ms against 70), no sink
+    `early-150-0` (-12 ms, hold 66 ms).
+  - **Firefox with P = 0 does not pass**: `early-24-0` and `early-20-0` run 26 to 30 ms ahead (frame-clock p90 -28 and
+    -26 ms), i.e. the first 28 ms of the incoming clip is skipped at every boundary.
+  - **Firefox passes only with P = 20, L = 20** (`early-20-20`: -5 ms, hold p90 52 ms against 60). That is one frame
+    of pre-roll, so it is a point of B+, not of B. It sits at Firefox's 40 ms frame-report resolution, so it is the
+    least certain result, and it is why both numbers are measured per session.
+- **Why a calibrated P and not LEAD alone.** LEAD is `play()` to first presented frame (about 24 ms in Firefox).
+  Feeding that back as LEAD reproduces `early-24-0`, which §6.7 marks "no (28 ms ahead)": Firefox starts its clock at
+  `play()` and presents frames late, so the error is not the latency. Calibrating on the alignment error, with P as
+  the second number, is what can move Firefox from -28 ms to about 0.
+- **What is accepted.** The gate's floor is -40 ms (D7). Where P cannot be applied (the incoming clip's first kept
+  frame is its frame 0, so IN = 0, or P has not converged on the first hand-overs), up to about 28 ms of the incoming
+  clip is skipped in Firefox, within the floor and silent. This is a known limit, and 3.1 records it per browser
+  from the real hand-overs.
+- C is worse. A fixed pre-roll of the lead's length only moves the first kept frame later (Chrome 45 to 136 ms lost,
+  holds 180 to 283 ms). Muting T until the swap skips 24 to 47 ms of the incoming clip, because the audio start-up is
+  the cost being hidden.
+- The lead and pre-roll depend on the machine, the browser and the audio device. A running median of the real
+  hand-overs, reset on `devicechange`, replaces constants. Task 3.1 re-measures this on the built code.
 - The audio overlap (both slots playing during the lead) was not checked by ear or recording, and the extra
   pre-build check against a real sink was **skipped by the operator's choice** (2026-11-23). The overlap should be
   near zero when LEAD matches the latency and about LEAD minus latency otherwise.
+
 
 ## Risks / Trade-offs
 
@@ -260,10 +311,10 @@ primary browser is **Firefox**; Chrome must still work.
   Bluetooth sink has a larger start-up latency than the clamp's 250 ms may cover, and a wrong lead means a short
   skip or a short stall at the boundary, or an audible overlap.
   → LEAD is calibrated at every hand-over and reset on `devicechange`; 3.1 records its observed values.
-- **[Risk] The end is noticed late.** `onFrame` acts only on a presented frame. The probe saw the end noticed by
-  `ended`, 30 to 53 ms after the last frame in Chromium.
-  → The hand-over also acts when the presented frame is past the clip's last kept frame. Task 2.2 records how often
-  the `ended` backstop is what fires.
+- **[Risk] The end is noticed late.** `onFrame` acts only on a presented frame, and Firefox reports every other
+  one. The probe saw the end noticed by `ended`, 30 to 53 ms after the last frame in Chromium.
+  → The decision is timed on the frame clock (D4), with `onFrame` and `ended` as backstops. Task 2.2 records how
+  often a backstop is what fires.
 - **[Risk] A second decoder is kept while playing**, with a third while the card bridge or a preview acts. Two 540p
   H.264 decoders are small. The standby exists only while playing, and `held` releases both.
 - **[Trade-off] A short next clip** (less play than its load) or a slow proxy falls back to `wait`, or to today's

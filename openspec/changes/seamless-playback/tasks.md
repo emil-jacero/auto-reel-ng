@@ -36,19 +36,25 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
 ## 1. Rules (web/src/timeline, web/src/playback)
 
 - [ ] 1.1 Add `timeline/standby.ts` (design D2): `standbyTarget`, the `Standby` states with `standbyStep`, and
-  `atBoundary`; and `timeline/lead.ts` (design D4): a pure lead calibrator and the early-start timing helper. Verify
+  `atBoundary`; and `timeline/lead.ts` (design D4): a pure calibrator (LEAD and pre-roll P) and the early-start
+  timing helper. Verify
   with `standby.test.ts` and `lead.test.ts`. `standby.test.ts` must cover:
   - the target after a plain clip, after a clip with a leading cut (the cut's end), over a clip cut whole, before a
     black-card gap (null), and at the last clip (null);
   - every transition, including an error and a re-target while loading;
+  - the lead: `started` from `ready` only (and `playAt` kept), `cancelled` to `seeking` and then `ready` on `seeked`,
+    both ignored in other states, and `atBoundary` `wait` on a cancelled standby that is still seeking;
   - `hand-over`, `wait` and `load` for a ready, loading or other-target standby.
 
   `lead.test.ts` must cover:
-  - the calibrator: 40 ms before any sample, the median of the last 9 (older ones dropped), the clamp to [0, 250] ms
-    (a negative and a huge sample), and the reset to 40 ms;
+  - the calibrator: LEAD is 40 ms before any sample, the median of the last 9 (older ones dropped), clamped to
+    [0, 250] ms (a negative and a huge sample); P is 0 before any sample, the median of the positive alignment
+    errors, clamped to [0, 40] ms and to the incoming in-point (0 at IN = 0), unchanged by a negative error; the
+    reset of both on `devicechange`; a Chrome-like series (errors near 0) keeps P at 0, a Firefox-like one (about
+    +28 ms) raises it;
   - the timing helper: given a frame clock (callback time minus media time, as a median over the last second), S's
-    kept end and the lead, when to start; a start time already past (start at once), and a lead longer than the time
-    left.
+    kept end and the lead, it returns both `startAt` and `decideAt`; a start time already past (start at once), a
+    lead longer than the time left, and `decideAt` one frame interval before the kept end.
 - [ ] 1.2 Give `anotherPlays` and `watchOtherStarts` in `playback/coordinator.ts` an `own` predicate (design D5).
   Verify with `coordinator.test.ts`, which must check that:
   - a paused second element of the same player is not "another", and neither is a second own element that plays
@@ -70,11 +76,13 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     a 90-degree clip, looked at for size, clipping, and the card layer on top.
 - [ ] 2.2 Preload, start early and hand over in `useTimelineVideo.ts` (design D3, D4):
   - the standby loads while Play holds and is re-targeted on a draft edit or a seek;
-  - the early start: arm from the shown slot's frame clock, start the standby (unmuted, `data-standby`) one lead
-    before the kept end, decide on the last kept frame, and swap one frame interval later; measure the lead at every
-    hand-over and reset it on `devicechange`;
-  - cancel during the lead (pause, scrub, seek, Previous/Next clip, a yield, an event reload): the standby pauses and
-    returns to its first kept frame, and the shown slot stays;
+  - the early start: arm from the shown slot's frame clock with the two timers of the timing helper (start the
+    standby, unmuted, `data-standby`, one lead before the kept end; decide at the predicted last kept frame, with
+    `onFrame` and `ended` as backstops), and swap one frame interval later; seek the standby to the first kept frame
+    less P; sample LEAD and P at every hand-over and reset them on `devicechange`;
+  - cancel during the lead (pause, scrub, seek, Previous/Next clip, a yield, an event reload): the standby pauses,
+    is sought back to its first kept frame, and is `seeking` until that lands (a second Play meanwhile takes `wait`);
+    the shown slot stays;
   - `advance()` follows `atBoundary`, with `wait` and `load` as fallbacks;
   - each slot gets its own handlers, and the coalescer is bound to the shown slot;
   - both slots are released on `held` and on unmount.
@@ -85,7 +93,8 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
   - a leading cut, and a clip cut whole;
   - a slowed proxy, by delaying one clip's route: the last frame is held and nothing is blank;
   - a reorder during play;
-  - a pause, and a scrub, during the lead: the shown clip stays, the standby is back at its first kept frame.
+  - a pause, and a scrub, during the lead: the shown clip stays, the standby is back at its first kept frame, and a
+    Play pressed while it is still seeking does not hand over until `seeked`.
 
   Also log how often the `ended` backstop is what triggers the hand-over.
 - [ ] 2.3 Make Use as poster and `useFrameReady` read the shown slot through `shown()` and `onSwap` (design D6), and
