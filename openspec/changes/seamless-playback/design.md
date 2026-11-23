@@ -131,8 +131,10 @@ already running when S's last kept frame has had its time.
   - Both reset (LEAD 40 ms, P 0) on `navigator.mediaDevices` `devicechange`.
   - **Why two numbers.** A single LEAD fed with `play()` to first frame cannot align Firefox. Its clock starts at
     `play()` and its frames arrive late, so P = 0 runs 26 to 30 ms ahead whatever LEAD is (`early-24-0`, `early-20-0`:
-    research §6.7). The pre-roll puts the frames the clock skips before the first kept frame. Chrome's error is about
-    0, so P stays within about a millisecond of 0 there (a pre-roll costs it 45 to 136 ms, §6.7).
+    research §6.7). The pre-roll puts the frames the clock skips before the first kept frame. Chrome's error was expected to be about
+    0 so that P would stay near 0 there (a pre-roll costs it 45 to 136 ms, §6.7). §6.10 did not bear that out: Chrome's
+    P had a median of 29.5 ms, 31 of 36 hand-overs above 0 and 10 of 36 at the 40 ms clamp. P also correlates with the
+    worse holds (Firefox median hold 84 ms with P > 0, 50 ms with P = 0); dropping P is the candidate follow-up.
 - **Arming.** The timing helper (`lead.ts`) takes S's frame clock (median of callback time minus `mediaTime` over the
   last second), S's kept end and LEAD, and returns **two** times: `startAt`, S's kept end minus LEAD, and `decideAt`,
   the kept end less a margin (6 ms, at most half a frame interval, as timer lateness was at most 5 ms), so S's last
@@ -202,8 +204,8 @@ stage gets `slotRefs`.
 ### D7. The boundary gate and its measurement
 The gate is the one in `event-timeline`, "Play crosses a clip boundary without a pause". The spec states the bounds the
 built code was measured to meet and the operator accepted on 2026-11-23 (research §6.10): per-browser absolute bounds
-for plain IN = 0 boundaries (lost p90 at most 20 ms; hold p90 at most the steady median plus two frame intervals of the
-browser's reported cadence, 90 ms in Firefox; no hold over 150 ms; no skip over 60 ms), a relative clause against the
+for plain IN = 0 boundaries (lost p90 at most 20 ms; hold p90 at most the steady median plus 40 ms in Firefox (90 ms at a
+steady median of 50) and plus 67 ms in Chrome (100 ms at 33.5); no hold over 150 ms; no skip over 60 ms), a relative clause against the
 single element of the same session, and leading-cut boundaries as a known limitation. The definitions below are unchanged. Its terms:
 - **Hold.** The longest interval between successive frames on screen, from the outgoing clip's last kept frame to
   0.5 s into the incoming one. With two slots, the incoming frames count from the swap.
@@ -273,7 +275,8 @@ keeps its bridge, and cuts inside a clip keep their seek.
 
 ### What is accepted at the boundary
 **Decision**: the sound stops with the outgoing clip's pause and starts with the incoming clip's `play()`, with no
-crossfade. The incoming slot is unmuted just before `play()`, after the operator's Play gesture, so autoplay rules
+crossfade. Because the standby plays unmuted for LEAD (52 to 72 ms median, D4) before the outgoing clip pauses, the two
+overlap briefly; that overlap has not been listened to or measured (see Risks). The incoming slot is unmuted just before `play()`, after the operator's Play gesture, so autoplay rules
 allow it.
 **Rationale**: the movie's own joins are hard cuts too (stream-copy concat), so the preview matches the render.
 
@@ -314,10 +317,11 @@ adopted; this amendment, with its P calibration, is for the operator to confirm 
   Feeding that back as LEAD reproduces `early-24-0`, which §6.7 marks "no (28 ms ahead)": Firefox starts its clock at
   `play()` and presents frames late, so the error is not the latency. Calibrating on the alignment error, with P as
   the second number, moves Firefox's alignment from -28 ms to about 0; it does not by itself pass the hold gate there (see above).
-- **What is accepted.** The gate's floor is -40 ms (D7). Where P cannot be applied (the incoming clip's first kept
-  frame is its frame 0, so IN = 0, or P has not converged on the first hand-overs), up to about 28 ms of the incoming
-  clip is skipped in Firefox, within the floor and silent. This is a known limit, and 3.1 records it per browser
-  from the real hand-overs.
+- **What is accepted.** The first gate's floor was -40 ms; the shipped spec does not claim it. Where P cannot be
+  applied (the incoming clip's first kept frame is its frame 0, so IN = 0, or P has not converged), the first 2 to 3
+  frames of the incoming clip are skipped: §6.10 measured p10 lost -41.5 ms in Firefox and -39.4 ms in Chrome, and a
+  maximum skip of 56.0 and 59.5 ms. The operator accepted this on 2026-11-23. This is a known limit, recorded per
+  browser in 3.1.
 - C is worse. A fixed pre-roll of the lead's length only moves the first kept frame later (Chrome 45 to 136 ms lost,
   holds 180 to 283 ms). Muting T until the swap skips 24 to 47 ms of the incoming clip, because the audio start-up is
   the cost being hidden.
@@ -332,8 +336,8 @@ adopted; this amendment, with its P calibration, is for the operator to confirm 
 After watching the built branch headed in Firefox on `2024-06-27 - Grillning med grannar`, the operator judged the
 boundaries "not that bad actually" and stopped optimization. The change ships as measured in research §6.10:
 - IN = 0, Firefox: hold p50 / p90 / max 51 / 83 / 134 ms (the first gate allowed 70 / 100), p10 lost -41.5 ms (floor
-  was -40). Chrome passes every term of the first gate. Today's single element, for comparison: Firefox lost about
-  220 ms, hold p90 about 251 ms.
+  was -40). Chrome passes every term of the first gate. Today's single element, for comparison (research §6.9, Firefox): lost p50
+  222.5 ms, hold p90 250.9 ms. §6.10's same-session single element: lost p50 / p90 264.0 / 275.1 ms, hold p90 255.5 ms.
 - Leading cuts fail the first gate in both browsers (Firefox lost p90 29.8, hold p90 117; Chrome lost p90 20.5, hold
   p90 83.5). The spec therefore states the measured per-browser bounds, a relative clause, and the leading-cut case as
   a known limitation, rather than the first gate.
