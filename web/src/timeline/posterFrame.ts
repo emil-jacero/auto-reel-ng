@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { RefObject } from 'react'
 
 /*
- * "Use as poster" takes the frame the Timeline's one `<video>` shows (D-20, event-poster-gui):
+ * "Use as poster" takes the frame the Timeline's shown `<video>` shows (D-20, event-poster-gui).
+ * The stage holds two slots (seamless-playback D1) and their roles swap at a clip hand-over, so
+ * the readers here take `shown()` (the slot showing the playhead's frame now) and, to follow
+ * it, `onSwap` (D6); they never keep an element across a swap. The frame is
  * copied into a canvas and kept as an object URL for the poster area. The page and the proxy
  * share an origin, so the canvas is never tainted; if reading it throws, nothing changes and
  * the button says so. The picture is the proxy's, upright by its display rotation: the
@@ -22,26 +24,43 @@ export function hasFrame(video: HTMLVideoElement | null): boolean {
 
 const WATCHED = ['loadstart', 'loadeddata', 'canplay', 'seeking', 'seeked', 'emptied', 'waiting'] as const
 
-/** Whether the Timeline's video has a decoded frame now; re-read when it loads, seeks or empties. */
-export function useFrameReady(videoRef: RefObject<HTMLVideoElement | null>, held: boolean): boolean {
+/**
+ * Whether the shown slot has a decoded frame now; re-read when it loads, seeks or empties, and
+ * listened to again on the slot that is shown after each swap.
+ */
+export function useFrameReady(
+  shown: () => HTMLVideoElement | null,
+  onSwap: (listener: () => void) => () => void,
+  held: boolean,
+): boolean {
   const [ready, setReady] = useState(false)
   useEffect(() => {
-    const video = videoRef.current
-    if (video === null) {
-      setReady(false)
-      return undefined
-    }
+    let video: HTMLVideoElement | null = null
     const read = () => setReady(hasFrame(video))
-    read()
-    for (const name of WATCHED) {
-      video.addEventListener(name, read)
-    }
-    return () => {
-      for (const name of WATCHED) {
-        video.removeEventListener(name, read)
+    const detach = () => {
+      if (video !== null) {
+        for (const name of WATCHED) {
+          video.removeEventListener(name, read)
+        }
       }
     }
-  }, [videoRef, held])
+    const attach = () => {
+      detach()
+      video = shown()
+      if (video !== null) {
+        for (const name of WATCHED) {
+          video.addEventListener(name, read)
+        }
+      }
+      read()
+    }
+    attach()
+    const unsubscribe = onSwap(attach)
+    return () => {
+      unsubscribe()
+      detach()
+    }
+  }, [shown, onSwap, held])
   return ready
 }
 

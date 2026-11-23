@@ -105,7 +105,7 @@ All work is in `web/`, plus the HLD, `docs/editor-workspace.md` and `docs/resear
     Play pressed while it is still seeking does not hand over until `seeked`.
 
   Also log how often the `ended` backstop is what triggers the hand-over.
-- [ ] 2.3 Make Use as poster and `useFrameReady` read the shown slot through `shown()` and `onSwap` (design D6), and
+- [x] 2.3 Make Use as poster and `useFrameReady` read the shown slot through `shown()` and `onSwap` (design D6), and
   update `posterFrame.ts`'s header. Verify in Playwright "Use as poster after a hand-over", and the existing poster
   scenarios of `web-app`.
 

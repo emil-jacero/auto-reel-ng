@@ -1134,7 +1134,7 @@ export function useTimeline({
   const atMax = pps >= MAX_PPS - 1e-9
   const note = video.note
   // Use as poster (Edit mode): why it cannot act now, in words, or null.
-  const frame = useFrameReady(video.videoRef, held)
+  const frame = useFrameReady(video.shown, video.onSwap, held)
   const [posterFailed, setPosterFailed] = useState(false)
   // The reason for the control of `only` (the inspector's: the clip it is about) or the transport's.
   const posterWhyFor = (only: TrackClip | null): string | null => {
@@ -1157,7 +1157,7 @@ export function useTimeline({
   }, [reasonGone])
   // Whether it went ahead (true) or said why it cannot (false).
   const usePoster = (suffix: string, only: TrackClip | null): boolean => {
-    const element = video.videoRef.current
+    const element = video.shown()
     const shownWhy = posterWhyFor(only)
     // What the button shows first (it looks unavailable: it does not act), then the video now.
     const result = posterFromPlayhead(clips, playhead.get(), {
