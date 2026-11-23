@@ -1,3 +1,5 @@
+import { toEnd } from '../preview/playback.ts'
+import type { Skip } from '../preview/playback.ts'
 import type { Ms } from './model.ts'
 
 /*
@@ -122,4 +124,13 @@ export function earlyTimes(
     decideAt: Math.max(startAt, endAt - frameIntervalMs),
     startNow: rawStart <= nowMs,
   }
+}
+
+/**
+ * The end of a clip's kept footage: the start of a cut that runs to its end, else its length.
+ * The shown slot's last kept frame is one frame interval before it.
+ */
+export function keptEndOf(spans: readonly Skip[], durationMs: Ms): Ms {
+  const last = spans[spans.length - 1]
+  return last !== undefined && toEnd(last, durationMs) ? last.from : durationMs
 }

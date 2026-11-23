@@ -496,3 +496,28 @@ Chrome 158, null sink `claude_null`, `--mute-audio` (L = lat = 66; steady p50 50
 - Raw results, logs and the sink-input log: `results/spike2/` in the session scratchpad (`measure/`): `ff160-*`,
   `chrome-nosink-early-*`, `chrome-null-early-*`, `analyze3-*.txt`, `early-sinkinputs.log`. Scripts: `spike3.html`,
   `measure3.py`, `measure_ff3.py`, `analyze3.py`, `runE_*.sh`. Not in the repo.
+
+### 6.8 Functional run of the built hand-over (task 2.2, 2026-11-23, headless)
+
+Playwright 1.65 headless (Firefox 159 and Chromium from the image, writes refused, muted at the browser, no audio
+device), the branch's own Vite against `Grillning med grannar` (four 6.02 s proxies; the first chapter's black card
+plays for about 6 s first). These runs check behaviour, not the gate: headless presents every 33 to 100 ms, so they say
+nothing of lost time or hold.
+
+- **What triggered the hand-over** (plain boundaries, 18 in 6 runs after the fixes below): `timer` 18, `frame` 0,
+  `ended` 0. Over the other scenarios, 28 more boundaries: `timer` 24, `frame` 1 (a Play resumed 80 ms before a trailing
+  cut), `seeked` 1 (the slow proxy: the last frame held 2.0 s, no blank sample in 2160), the rest `timer`.
+- **LEAD observed** (median after each sample): Firefox 159 49 to 66 ms, Chromium 85 to 104 ms. **P**: 0 on every IN = 0
+  boundary (no pre-roll possible). With a leading cut on every clip it went 0, 0, then 40 (the clamp) in Firefox and
+  stayed 0 in Chromium; one Chromium run reached 38 after a cancel. Firefox's P is unsettled here: 3.1 decides it.
+- **Cancel during the lead**: pause, Next clip and a scrub paused the standby and sent it back to its pre-sought
+  position (Firefox: `seeking` then `seeked` 10 ms later, the clip stayed shown, no swap); a Play 6 ms after the pause
+  (a trailing cut makes the boundary come at once) handed over only after the standby's `seeked` in both browsers.
+  A pause after the decision swaps and leaves the incoming clip paused at its first kept frame.
+- **Two findings that shaped the code.** (1) In Firefox, writing another slot's `src` from inside a frame callback ends
+  the shown slot's `requestVideoFrameCallback` chain for good (a fresh registration never fires either, while
+  `mozPaintedFrames` goes on): the swap and the frame loop now defer that write to its own task (`aimSoon`). Before it,
+  4 of 6 Firefox boundaries came through `ended`, 1.5 s late (the swap watchdog). (2) Firefox reports the pre-sought
+  frame again at `play()` (`currentTime` still at the sought position); counting it made LEAD 3 to 11 ms, so a LEAD or
+  alignment sample needs `currentTime` past the sought position as well.
+- Scripts: `pw/h22.py`, `pw/sc.py` in the session scratchpad. Not in the repo.
