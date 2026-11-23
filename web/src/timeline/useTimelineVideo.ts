@@ -351,6 +351,8 @@ export function useTimelineVideo({
     }
   }, [standbyEl])
   const standbyLandedRef = useRef<() => void>(() => undefined)
+  const stopPlayingRef = useRef<() => void>(() => undefined)
+  const advanceRef = useRef<(source: 'timer' | 'frame' | 'ended') => void>(() => undefined)
 
   /** The lead is over before the decision: the standby pauses and goes back to its pre-sought position. */
   const cancelLead = useCallback(() => {
@@ -537,16 +539,28 @@ export function useTimelineVideo({
     if (cur.kind === 'started') {
       cancelLead()
     }
-    standbyWait.current = standbyWait.current !== null && target !== null ? standbyWait.current : null
+    // A boundary wait is for the target the standby had: when the standby is re-pointed the wait
+    // is dropped and the boundary decision runs again (a card, the end, or a new wait).
+    const rewait =
+      standbyWait.current !== null &&
+      (target === null ||
+        target.clip !== standbyWait.current.clip ||
+        target.ms !== standbyWait.current.ms)
+    if (rewait) {
+      standbyWait.current = null
+    }
     standby.current = next
     if (target === null) {
       release(video)
       slotClips.current[standbySlot()] = null
-      return
+    } else {
+      video.muted = true
+      applyTurnTo(standbySlot(), target.clip)
+      video.src = address
     }
-    video.muted = true
-    applyTurnTo(standbySlot(), target.clip)
-    video.src = address
+    if (rewait && wantPlay.current) {
+      advanceRef.current('ended')
+    }
   }, [addressOf, applyTurnTo, cancelLead, release, standbyEl, standbySlot])
 
   /**
@@ -637,6 +651,8 @@ export function useTimelineVideo({
       outgoing.setAttribute('data-standby', '')
       outgoing.muted = true
       delete outgoing.dataset.handover
+      delete outgoing.dataset.lead
+      delete outgoing.dataset.preroll
       incoming.dataset.handover = run.source
       incoming.dataset.lead = String(Math.round(leadOf(calibration)))
       incoming.dataset.preroll = String(Math.round(run.preRollMs))
@@ -755,16 +771,14 @@ export function useTimelineVideo({
         if (error instanceof DOMException && error.name === 'AbortError') {
           return
         }
-        cancelEarly()
-        wantPlay.current = false
-        setPlaying(false)
+        stopPlayingRef.current()
         if (error instanceof DOMException && error.name === 'NotAllowedError') {
           setNote({ tone: 'warn', title: NOT_STARTED, detail: null })
         }
       })
       return true
     },
-    [cancelEarly, isOwn, standbyEl, standbySlot, watchIncoming],
+    [isOwn, standbyEl, standbySlot, watchIncoming],
   )
 
   /**
@@ -891,6 +905,9 @@ export function useTimelineVideo({
     cancelEarly()
     shownEl()?.pause()
   }, [cancelEarly, disarm, pauseCard, shownEl])
+  useEffect(() => {
+    stopPlayingRef.current = stopPlaying
+  }, [stopPlaying])
   useEffect(() => {
     stopRef.current = () => {
       if (clock.running() || handOverWait.current || standbyWait.current !== null) {
@@ -1028,6 +1045,9 @@ export function useTimelineVideo({
     },
     [addressOf, coalescer, enterCard, handOver, holdForStandby, moveVideo, playhead, stopPlaying],
   )
+  useEffect(() => {
+    advanceRef.current = advance
+  }, [advance])
 
   /** Whether a timer of the early start may act now on the clip it was set for. */
   const timerValid = useCallback(
@@ -1043,6 +1063,8 @@ export function useTimelineVideo({
         swapping.current ||
         coalescer.busy() ||
         video.paused ||
+        video.readyState < 3 ||
+        video.seeking ||
         loadedClip.current !== clip ||
         windowOpen(leadRun.current)
       ) {

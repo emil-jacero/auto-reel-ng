@@ -6,6 +6,7 @@ import {
   installPagePlayback,
   keepOneVideoPlaying,
   pauseOthers,
+  sameAncestor,
   watchOtherStarts,
 } from './coordinator.ts'
 import type { PausableVideo, VideoRoot } from './coordinator.ts'
@@ -318,5 +319,21 @@ describe('installPagePlayback', () => {
     assert.deepEqual(added, [['play', true]])
     stop()
     assert.deepEqual(removed, ['play'])
+  })
+})
+
+describe('sameAncestor (the real samePlayer rule)', () => {
+  const under = (marker: object | null) => ({ closest: () => marker })
+  it('two videos under one marked ancestor are one player', () => {
+    const stage = {}
+    assert.equal(sameAncestor(under(stage), under(stage), '[data-player]'), true)
+  })
+  it('videos under different marked ancestors are not', () => {
+    assert.equal(sameAncestor(under({}), under({}), '[data-player]'), false)
+  })
+  it('videos with no marked ancestor are not the same player', () => {
+    assert.equal(sameAncestor(under(null), under(null), '[data-player]'), false)
+    assert.equal(sameAncestor(null, null, '[data-player]'), false)
+    assert.equal(sameAncestor(under({}), null, '[data-player]'), false)
   })
 })
