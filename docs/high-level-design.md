@@ -548,7 +548,8 @@ The north star is a **full timeline editor**, but we ship in thin slices:
   **The Timeline plays and shows the title cards** (`timeline-plays-cards`, D-20): playing into a black card shows its
   image over the picture and runs the playhead in real time for the card's length, then goes on into the chapter's first
   clip; a video card's image is laid over the playing video for its window; the playhead can be put in a card (press, drag,
-  keys) and the readouts count card time.
+  keys) and the readouts count card time; the card is shown at its fades' opacity wherever the playhead is, played or
+  paused (`titlecard-scrub-fade`).
   **A card's length is dragged on the Timeline** (`title-card-duration-drag`, D-20): the end edge of a card block is a slider
   (0.1 s steps, whole-second snap within 8 px, 0.5 s to 60 s, arrows/Shift/Home/End), a black card moves everything after it
   while it is dragged, a video card is held to its footage; one edit of the draft, Reset and Save as for a cut. The typed
@@ -984,6 +985,18 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     **`seamless-playback` is built** (web only; D-20): the Timeline's two slots play across a plain clip boundary with
     a measured, operator-accepted gate (D-20, research §6.10); leading cuts and the first-frame skip stay known
     limitations; no API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
+    **`titlecard-scrub-fade` is built** (web only; D-20): the Timeline's card layer shows the fades at every playhead
+    position, played or paused; a keyboard activation of a black card block lands where its fade-in ends; no API,
+    engine or `RENDER_GRAPH_VERSION` change; no new dependency. Operator decision (2026-11-23): faithful fades at
+    every position, no floor. Browser check, headless (Chromium 159 and Firefox 159, light and dark, 1440 px, against
+    a scratch library on the real stack, 136 checks, all passing): the fades at every paused position (page open,
+    Home, key steps, a step back from a clip into a card, Shift+Arrow steps into and out of a card, Next clip into a
+    video card, presses in black and video cards, a 3 s card's clamped fades), paused and playing drags, Pause during
+    a black card's and a video card's fades, Enter on a black block (playhead and selection) and the card hand-over.
+    Unit-tested only, not in a browser: a frame step into a card from the last frame of the clip before it (then
+    Shift+Right), a Shift step that starts and ends inside a card, the length-shrink clamp, the picture fallback, and
+    the two scenarios this change does not touch (another player starts during a card; a slow frame does not stretch
+    the card).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -1661,17 +1674,23 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     output rate) and cross into and out of a card, seconds steps and Home land in one. **The fades are the engine's defaults**
     (2 s in, 2 s out, scaled together to the length): `ResolvedCardOut` does not carry a card's fades, so a fade set by
     `look.title_card` is not shown, and the Timeline says so once; carrying `fade_in`/`fade_out` on the detail is the
-    follow-up that removes this limit. **Card images** (`cardImages.ts`, pure, with the request, timer and URL functions
-    passed in): every card's image is fetched once when the Timeline opens, one request at a time in play order, each body built
-    by the inspector's own `previewRequest` from the resolved card (the draft's in Edit mode), the answers kept as object
-    URLs keyed by body and style; a 503 is waited out by `Retry-After` (1 to 30 s, three tries), any other failure is said once
-    and not retried, an edit fetches only its own card after the inspector's 250 ms and the old image stays until the new one
-    arrives, and closing the Timeline revokes every URL. The Timeline is a second client of the preview endpoint beside the
-    inspector (the endpoint allows two at once; the Timeline asks for one, leaving the other slot to the inspector). While an
-    image is missing the card's title is shown on black. **Blocks** show the image as a miniature (cover, the words on a solid strip of the block's colour under the
-    words), at least 24 px wide however far the track is zoomed out (the span on the track is unchanged), and a press in a black
-    card's block or span also puts the playhead there. **Bundle:** JS 615.70 to 626.79 kB (198.39 to 202.01 gzip, +3.6 KB),
-    CSS 90.82 to 91.86 kB (17.03 to 17.26 gzip), as `vite build` reports them; no package added.
+    follow-up that removes this limit. **Amended (`titlecard-scrub-fade`, 2026-11-23):** the card layer shows the fades
+    at every playhead position (played, paused, scrubbed, stepped), as the movie does; a card's first instant is at
+    opacity 0 (so an Edit page whose opening card is black opens on a black stage), Pause keeps the opacity reached, and
+    a keyboard activation of a black card block lands where its fade-in ends. The decision is the pure `cardView.ts`
+    (`cardViewAt`, no play state), which reverts the review fix `c2fd5d11`'s 'full when paused'. **Card images**
+    (`cardImages.ts`, pure, with the request, timer and URL functions passed in): every card's image is fetched once
+    when the Timeline opens, one request at a time in play order, each body built by the inspector's own
+    `previewRequest` from the resolved card (the draft's in Edit mode), the answers kept as object URLs keyed by body
+    and style; a 503 is waited out by `Retry-After` (1 to 30 s, three tries), any other failure is said once and not
+    retried, an edit fetches only its own card after the inspector's 250 ms and the old image stays until the new one
+    arrives, and closing the Timeline revokes every URL. The Timeline is a second client of the preview endpoint beside
+    the inspector (the endpoint allows two at once; the Timeline asks for one, leaving the other slot to the inspector).
+    While an image is missing the card's title is shown on black. **Blocks** show the image as a miniature (cover, the
+    words on a solid strip of the block's colour under the words), at least 24 px wide however far the track is zoomed
+    out (the span on the track is unchanged), and a press in a black card's block or span also puts the playhead there.
+    **Bundle:** JS 615.70 to 626.79 kB (198.39 to 202.01 gzip, +3.6 KB), CSS 90.82 to 91.86 kB (17.03 to 17.26 gzip), as
+    `vite build` reports them; no package added.
   - **The layout is by kept extent (`timeline-ripple-layout`, 2026-10-04).** The user chose "Shorten + ripple": the trimmed
     start and end of a clip disappear, its block gets shorter and later clips slide left, so the Timeline shows the movie as it
     will play. "A trimmed clip is as wide as its proxy" no longer holds. **One rule:** `keptExtent` (`model.ts`) takes the
