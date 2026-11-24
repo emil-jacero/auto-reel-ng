@@ -123,6 +123,25 @@ describe('docs/high-level-design.md and timeline-plays-cards', () => {
   })
 })
 
+/* The design document names titlecard-scrub-fade in §4.10, §6 and D-20. */
+describe('docs/high-level-design.md and titlecard-scrub-fade', () => {
+  const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')
+
+  it('names titlecard-scrub-fade in §4.10, §6 and D-20', () => {
+    const lines = text.split('\n')
+    const at = lines.flatMap((line, i) => (line.includes('titlecard-scrub-fade') ? [i] : []))
+    const between = (from: string, to: string) => {
+      const a = lines.findIndex((line) => line.startsWith(from))
+      const b = lines.findIndex((line) => line.startsWith(to))
+      assert.ok(a > 0 && b > a, `${from} .. ${to}`)
+      return at.some((i) => i > a && i < b)
+    }
+    assert.ok(between('### 4.10 ', '### 4.11 '), '§4.10 names it')
+    assert.ok(between('## 6. ', '## 7. '), '§6 names it')
+    assert.ok(between('- **D-20', '- **D-21'), 'D-20 names it')
+  })
+})
+
 /* The design document names help-text-declutter in §4.10 and no longer describes a permanent movie line. */
 describe('docs/high-level-design.md and help-text-declutter', () => {
   const text = readFileSync(new URL('../../../docs/high-level-design.md', import.meta.url), 'utf8')

@@ -106,6 +106,33 @@ export function fadesOf(lengthMs: Ms): { inMs: Ms; outMs: Ms } {
   return { inMs: DEFAULT_FADE_MS * scale, outMs: DEFAULT_FADE_MS * scale }
 }
 
+/**
+ * The part (0..1) of a black card's block a click was at: `null` for a keyboard activation (a click with
+ * no pointer, `detail` 0), else the pointer's place in the box (0 when the box has no width).
+ */
+export function cardPressPart(
+  detail: number,
+  clientX: number,
+  left: number,
+  width: number,
+): number | null {
+  if (detail === 0) {
+    return null
+  }
+  return width > 0 ? (clientX - left) / width : 0
+}
+
+/**
+ * Where a press in a black card's block puts the playhead: `part` (0..1) of the way along it, held inside
+ * the card; a keyboard activation has no pointer (`part` null) and lands where the fade-in ends.
+ */
+export function cardPressMs(startMs: Ms, widthMs: Ms, part: number | null): Ms {
+  if (part === null) {
+    return startMs + fadesOf(widthMs).inMs
+  }
+  return startMs + Math.min(0.999, Math.max(0, part)) * widthMs
+}
+
 /** A card's opacity `elapsedMs` into its `lengthMs`: 0 at the start, 1 between the fades, 0 at the end. */
 export function opacityAt(elapsedMs: Ms, lengthMs: Ms): number {
   const { inMs, outMs } = fadesOf(lengthMs)

@@ -6,6 +6,8 @@ import type { CardClip, CardSpec } from './cards.ts'
 import { ModelError, keptExtent, layout } from './model.ts'
 import {
   createCardClock,
+  cardPressMs,
+  cardPressPart,
   fadesOf,
   handOverMs,
   handOverReady,
@@ -241,6 +243,24 @@ describe('steps across cards', () => {
   const { map, lay, facts } = movie()
   const step = (p: Parameters<typeof stepFramesOnTrack>[3], n: number) =>
     stepFramesOnTrack(map, facts, names, p, n)
+
+  it('puts a press in a black card block, and a keyboard activation, where they land', () => {
+    assert.equal(cardPressMs(10000, 4000, 0.25), 11000)
+    assert.equal(cardPressMs(10000, 4000, -0.1), 10000)
+    assert.equal(cardPressMs(10000, 4000, 1.5), 13996)
+    assert.equal(cardPressMs(10000, 4000, null), 12000)
+    assert.equal(cardPressMs(5000, 3000, null), 5000 + 1500)
+    assert.equal(opacityAt(cardPressMs(10000, 4000, null) - 10000, 4000), 1)
+    assert.equal(opacityAt(cardPressMs(5000, 3000, null) - 5000, 3000), 1)
+  })
+
+  it('reads a keyboard activation (detail 0) as no pointer, and a mouse press as its place', () => {
+    assert.equal(cardPressPart(0, 0, 100, 200), null)
+    assert.equal(cardPressPart(0, 150, 100, 200), null)
+    assert.equal(cardPressPart(1, 150, 100, 200), 0.25)
+    assert.equal(cardPressPart(1, 100, 100, 200), 0)
+    assert.equal(cardPressPart(1, 150, 100, 0), 0)
+  })
 
   it('skips nothing: a step into a card lands on its first instant', () => {
     const next = step({ clip: 0, ms: 19960 }, 1)
