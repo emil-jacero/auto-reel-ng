@@ -87,6 +87,7 @@ import {
 import { BinPlayer } from './BinPlayer'
 import { cuttable } from './binPlayer.ts'
 import { setBinPlayerShown } from './binPlayerPref.ts'
+import { isPaneHidden, showPane, usePaneHidden } from './workspace/paneSizesPref.ts'
 import { ChapterList } from './ChapterList'
 import type { ChapterRowModel } from './ChapterList'
 import type { ChapterHandler, ChapterMoveHandler, ChapterToolsModel } from './ChapterTools'
@@ -1338,6 +1339,8 @@ export function EventEditor({
   // Event tab to be drawn before it takes focus.
   const [inspectorTab, setInspectorTab] = useInspectorTab(cards)
   const refusalWaits = useRef(false)
+  // Only a workspace has an inspector pane to hide (the unusable-metadata page has none).
+  const inspHidden = usePaneHidden('insp') && inWorkspace
   const cancelRef = useRef<HTMLButtonElement>(null)
   const keepEditingRef = useRef<HTMLButtonElement>(null)
   // What the failure's alert said when Try again was pressed (`failureWords`), until the
@@ -1588,9 +1591,20 @@ export function EventEditor({
     // In the workspace a refusal at the Details fields is in the inspector's Event tab, hidden
     // while another tab shows: the Event tab is shown first, and the refusal takes focus once it
     // is drawn (below).
-    if (refusalRef.current?.closest('.ws-insp-panel[hidden]') != null) {
+    // A hidden inspector (`resizable-panes`) is shown first, and the refusal waits for it too.
+    const refused =
+      ready?.refusal != null || ready?.cardRefusal != null || ready?.styleRefusal != null
+    // Read before showing: the layout effect below is keyed on the hidden state the render saw.
+    const wasHidden = inWorkspace && isPaneHidden('insp')
+    if (refused && wasHidden) {
+      showPane('insp')
+    }
+    const panelHidden = refusalRef.current?.closest('.ws-insp-panel[hidden]') != null
+    if (panelHidden || (refusalRef.current !== null && wasHidden)) {
       refusalWaits.current = true
-      setInspectorTab('event')
+      if (panelHidden) {
+        setInspectorTab('event')
+      }
       return
     }
     // In the workspace a top bar that rests at the page's top (a short window, a large zoom)
@@ -1617,7 +1631,7 @@ export function EventEditor({
     }
   }, [answers, inWorkspace])
   useLayoutEffect(() => {
-    if (!refusalWaits.current || inspectorTab !== 'event') {
+    if (!refusalWaits.current || inspectorTab !== 'event' || inspHidden) {
       return
     }
     refusalWaits.current = false
@@ -1626,7 +1640,7 @@ export function EventEditor({
       refusal.focus()
       keepInView(refusal, barRef.current)
     }
-  }, [inspectorTab])
+  }, [inspectorTab, inspHidden])
 
   // After Reset the heading has focus (the bar went with its buttons) but the page may have
   // shrunk and scrolled, or sit far from the heading at the top. The scroll waits for the
@@ -2061,6 +2075,10 @@ export function EventEditor({
   const trackAt = useRef<TrackBridge['current']>(null)
   const menuAt = useRef<MenuBridge['current']>(null)
   const overBin = useCallback((x: number, y: number) => {
+    // Never a drop into a hidden bin (`resizable-panes`): its box lies outside the window.
+    if (isPaneHidden('bin')) {
+      return false
+    }
     const box = document.querySelector('.ws-binbox')?.getBoundingClientRect()
     return box !== undefined && x >= box.left && x < box.right && y >= box.top && y < box.bottom
   }, [])
@@ -2498,6 +2516,10 @@ export function EventEditor({
     }
     const chapter = draftChapters.find((candidate) => candidate.key === refusedCard.key)
     if (chapter !== undefined) {
+      // The card's field is in the inspector: a hidden one is shown first (`resizable-panes`).
+      if (inWorkspace && isPaneHidden('insp')) {
+        showPane('insp')
+      }
       openCard(cardIdOf(chapter))
     }
     // Once per answer: selecting another card afterwards is the operator's.

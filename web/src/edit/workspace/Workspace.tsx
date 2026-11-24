@@ -1,6 +1,6 @@
 import './workspace.css'
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { TimelinePanesContext } from '../../timeline/panes'
@@ -8,6 +8,23 @@ import type { TimelinePanes } from '../../timeline/panes'
 import { Inspector } from './Inspector.tsx'
 import { useModalityTracking } from './modality.ts'
 import type { InspectorTab } from './inspectorTabs.ts'
+import { PaneSeparator } from './PaneSeparator.tsx'
+import {
+  PANES,
+  commitPanes,
+  effectiveSizes,
+  limits,
+  sameFrame,
+} from './paneSizes.ts'
+import type { Frame, PaneAction, PaneId, PaneProperty } from './paneSizes.ts'
+import {
+  isStacked,
+  panePrefs,
+  registerPaneShower,
+  setPanePrefs,
+  usePanePrefs,
+  useStacked,
+} from './paneSizesPref.ts'
 
 /*
  * Edit mode's workspace (`editor-workspace-layout`, design D1): the window's full height and
@@ -18,7 +35,38 @@ import type { InspectorTab } from './inspectorTabs.ts'
  * track-only part of the Clip tab in the editor's Clip tab and its suggestion panel in the
  * Suggestion tab (`TimelinePanesContext`): one tree, one state, one video. The inspector
  * (`Inspector.tsx`) follows the page's selection without moving focus.
+ *
+ * Wide, the three pane borders are separators (`PaneSeparator.tsx`): dragged, or moved by keys,
+ * they size the bin, the inspector and the Timeline (`resizable-panes`); a pane dragged past half
+ * its least size hides, its border staying at the window's edge to bring it back. The sizes and
+ * the hidden panes are kept in the browser (`paneSizesPref.ts`) over today's default rules and
+ * fitted to the window (`paneSizes.ts`). The drawn sizes are custom properties on <html>, written
+ * imperatively (`applyPane`) so a drag renders nothing; a hidden pane stays mounted, `inert` and
+ * out of sight (`data-hidden`), so the Timeline keeps playing and the inspector keeps its portals.
  */
+
+const PROPERTY: Record<PaneId, PaneProperty> = {
+  bin: '--ws-bin-w',
+  insp: '--ws-insp-w',
+  tl: '--ws-tl-h',
+}
+
+const NAMES: Record<PaneId, string> = {
+  bin: 'Resize the clip bin',
+  insp: 'Resize the inspector',
+  tl: 'Resize the Timeline',
+}
+
+/** The window's numbers `paneSizes.ts` lays out by; the top bar's height is measured by the caller. */
+function readFrame(top: number): Frame {
+  const root = document.documentElement
+  return {
+    width: root.clientWidth,
+    height: root.clientHeight,
+    rem: parseFloat(getComputedStyle(root).fontSize) || 16,
+    top,
+  }
+}
 
 /** Stacked, the top bar sticks while it takes at most this share of the window's height… */
 const TOP_MAX_SHARE = 0.4
@@ -67,6 +115,17 @@ export function Workspace({
   const [suggestionPane, setSuggestionPane] = useState<HTMLElement | null>(null)
   const [cardPane, setCardPane] = useState<HTMLElement | null>(null)
   const topRef = useRef<HTMLDivElement>(null)
+  const binRef = useRef<HTMLElement>(null)
+  const inspRef = useRef<HTMLElement>(null)
+  const tlRef = useRef<HTMLElement>(null)
+  const ids = { bin: useId(), insp: useId(), tl: useId() }
+  const prefs = usePanePrefs()
+  const stacked = useStacked()
+  const [frame, setFrame] = useState<Frame>(() => readFrame(0))
+  const frameRef = useRef(frame)
+  const measureRef = useRef<(() => void) | null>(null)
+  // The pane a border is dragging now: the apply effect leaves it to the live writes.
+  const draggingRef = useRef<PaneId | null>(null)
   // The last input (Tab or a pointer press) for Space on a focused control (`editor-shortcuts`).
   useModalityTracking()
 
@@ -95,7 +154,14 @@ export function Workspace({
     const root = document.documentElement
     const measure = () => {
       const rem = parseFloat(getComputedStyle(root).fontSize)
-      const stacked = window.matchMedia('(width < 960px)').matches
+      const stacked = isStacked()
+      // The frame the panes are laid out by: state only when its four numbers changed, so a drag
+      // of the Timeline's border (which changes none of them) renders nothing (design D3).
+      const next = readFrame(top.offsetHeight)
+      if (!sameFrame(frameRef.current, next)) {
+        frameRef.current = next
+        setFrame(next)
+      }
       const alert = top.querySelector<HTMLElement>('.save-bar-alert')
       // The explanation's share of the bar: none in the wide frame, where it is a panel.
       const margin =
@@ -133,8 +199,14 @@ export function Workspace({
         focused.scrollIntoView({ block: 'nearest' })
       }
     }
+    measureRef.current = measure
     const observer = new ResizeObserver(measure)
     observer.observe(top)
+    // The explanation's cap ends above the Timeline: its height changes follow too (design D7).
+    const timelineSection = top.parentElement?.querySelector('.ws-tl')
+    if (timelineSection instanceof HTMLElement) {
+      observer.observe(timelineSection)
+    }
     // The wide frame's panel takes no room in the bar: its coming, going and size are followed
     // on their own.
     let watched: HTMLElement | null = null
@@ -158,6 +230,7 @@ export function Workspace({
     window.addEventListener('resize', measure)
     return () => {
       window.removeEventListener('resize', measure)
+      measureRef.current = null
       mutations.disconnect()
       observer.disconnect()
       top.style.removeProperty('--ws-alert-max')
@@ -165,6 +238,128 @@ export function Workspace({
       root.style.removeProperty('--ws-toast-top')
     }
   }, [])
+
+  const drawn = useMemo(() => effectiveSizes(prefs, frame), [prefs, frame])
+  const drawnRef = useRef(drawn)
+  drawnRef.current = drawn
+
+  // What a pane's size decides, together: its track, and `data-hidden` and `inert` on its section
+  // when it is 0 (focus inside it is blurred to the page first, where the workspace's keys act).
+  // React owns neither, so a render never undoes a live drag write (design D3).
+  // A live (mid-drag) write is transient: it only sizes the pane to 0 and marks it
+  // `data-collapsing`, which the CSS lays out like a hidden pane but never makes `visibility:
+  // hidden` (a focused element that stops being visible is blurred by the browser, which would
+  // fire the `blur` commit of a half-typed trim or cut field). Blur, `inert` and `data-hidden`
+  // wait for the commit.
+  const applyPane = useCallback((pane: PaneId, px: number, transient = false) => {
+    document.documentElement.style.setProperty(PROPERTY[pane], `${px}px`)
+    const section = { bin: binRef, insp: inspRef, tl: tlRef }[pane].current
+    if (section !== null) {
+      if (px === 0 && transient) {
+        section.setAttribute('data-collapsing', '')
+      } else if (px === 0) {
+        const focused = document.activeElement
+        if (focused instanceof HTMLElement && section.contains(focused)) {
+          focused.blur()
+        }
+        section.inert = true
+        section.removeAttribute('data-collapsing')
+        section.setAttribute('data-hidden', '')
+      } else {
+        section.removeAttribute('data-collapsing')
+        section.removeAttribute('data-hidden')
+        section.inert = false
+      }
+    }
+    if (pane === 'tl') {
+      measureRef.current?.()
+    }
+  }, [])
+
+  const clearPanes = useCallback(() => {
+    for (const pane of PANES) {
+      document.documentElement.style.removeProperty(PROPERTY[pane])
+      const section = { bin: binRef, insp: inspRef, tl: tlRef }[pane].current
+      section?.removeAttribute('data-hidden')
+      section?.removeAttribute('data-collapsing')
+      if (section !== null && section !== undefined) {
+        section.inert = false
+      }
+    }
+  }, [])
+
+  // The drawn sizes, wide; stacked there are none. Primitive dependencies only, and the dragged
+  // pane is skipped, so a re-run from another cause never writes over a live drag.
+  useLayoutEffect(() => {
+    if (stacked) {
+      clearPanes()
+      return
+    }
+    for (const pane of PANES) {
+      if (draggingRef.current !== pane) {
+        applyPane(pane, drawn[pane])
+      }
+    }
+  }, [drawn.bin, drawn.insp, drawn.tl, stacked, applyPane, clearPanes]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLayoutEffect(() => clearPanes, [clearPanes])
+
+  // A commit stores what `commitPanes` says and applies the committed pane itself: the effect
+  // above would not re-run when the size equals the one drawn before the drag (design D3).
+  const commit = useCallback(
+    (pane: PaneId, action: PaneAction) => {
+      const next = commitPanes(pane, action, panePrefs(), drawnRef.current, frameRef.current)
+      setPanePrefs(next)
+      draggingRef.current = null
+      applyPane(pane, effectiveSizes(next, frameRef.current)[pane])
+    },
+    [applyPane],
+  )
+  const live = useCallback(
+    (pane: PaneId, px: number) => {
+      draggingRef.current = pane
+      applyPane(pane, px, true)
+    },
+    [applyPane],
+  )
+  const cancel = useCallback(
+    (pane: PaneId) => {
+      draggingRef.current = null
+      applyPane(pane, drawnRef.current[pane])
+    },
+    [applyPane],
+  )
+
+  // Showing a hidden pane from outside (a save refused at an inspector field), by the same path.
+  useLayoutEffect(
+    () =>
+      registerPaneShower((pane) => {
+        const kept = panePrefs()
+        if (isStacked() || !kept.hidden.includes(pane)) {
+          return
+        }
+        commit(pane, { kind: 'show' })
+      }),
+    [commit],
+  )
+
+  const lim = {
+    bin: limits('bin', drawn, frame),
+    insp: limits('insp', drawn, frame),
+    tl: limits('tl', drawn, frame),
+  }
+  const separator = (pane: PaneId) => (
+    <PaneSeparator
+      pane={pane}
+      controls={ids[pane]}
+      label={NAMES[pane]}
+      size={drawn[pane]}
+      limits={lim[pane]}
+      onLive={(px) => live(pane, px)}
+      onCommit={(action) => commit(pane, action)}
+      onCancel={() => cancel(pane)}
+    />
+  )
 
   const panes = useMemo<TimelinePanes>(
     () => ({ viewer: viewerPane, clip: clipSlot, suggestion: suggestionPane, card: cardPane }),
@@ -177,18 +372,26 @@ export function Workspace({
         <div ref={topRef} className="ws-top">
           {top}
         </div>
-        <section className="ws-binbox" aria-label="Clips">
+        <section ref={binRef} id={ids.bin} className="ws-binbox" aria-label="Clips">
           {player}
           <div className="ws-pane ws-bin" data-ws-scroll>
             {bin}
           </div>
           {info}
         </section>
+        {separator('bin')}
         <section className="ws-pane ws-view" aria-label="Viewer">
           <div className="ws-view-empty">{viewer}</div>
           <div ref={setViewerPane} className="ws-view-slot" />
         </section>
-        <section className="ws-pane ws-insp" aria-label="Inspector" data-ws-scroll>
+        {separator('insp')}
+        <section
+          ref={inspRef}
+          id={ids.insp}
+          className="ws-pane ws-insp"
+          aria-label="Inspector"
+          data-ws-scroll
+        >
           <Inspector
             tab={tab}
             onTab={onTab}
@@ -198,7 +401,14 @@ export function Workspace({
             cardSlot={setCardPane}
           />
         </section>
-        <section className="ws-pane ws-tl" aria-label="Timeline" data-ws-scroll>
+        {separator('tl')}
+        <section
+          ref={tlRef}
+          id={ids.tl}
+          className="ws-pane ws-tl"
+          aria-label="Timeline"
+          data-ws-scroll
+        >
           {timeline}
         </section>
       </div>

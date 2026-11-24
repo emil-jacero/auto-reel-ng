@@ -165,6 +165,8 @@ const ARROW_ROLES = new Set([
   'gridcell',
   'tree',
   'treeitem',
+  // A pane border (`PaneSeparator.tsx`) takes the arrows, Home, End and Enter itself.
+  'separator',
 ])
 
 const SPACE_ROLES = new Set([
@@ -356,6 +358,24 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     group: 'Editing',
+    keys: [['Left'], ['Right'], ['Up'], ['Down']],
+    words: 'On a pane border: move it (Shift: further), past its smallest size to hide it',
+    scope: 'focused',
+  },
+  {
+    group: 'Editing',
+    keys: [['Home'], ['End']],
+    words: "On a pane border: the pane's smallest or largest size",
+    scope: 'focused',
+  },
+  {
+    group: 'Editing',
+    keys: [['Enter']],
+    words: 'On a pane border: hide or show the pane',
+    scope: 'focused',
+  },
+  {
+    group: 'Editing',
     keys: [['?']],
     words: 'Show or hide this list',
     scope: 'workspace',
@@ -416,6 +436,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: 'Mouse',
     keys: [['Right-click a clip']],
     words: 'Open its menu',
+    scope: 'mouse',
+  },
+  {
+    group: 'Mouse',
+    keys: [['Drag a pane border']],
+    words: 'Resize the pane; past half its smallest size it hides',
+    scope: 'mouse',
+  },
+  {
+    group: 'Mouse',
+    keys: [['Double-click a pane border']],
+    words: 'Put the pane back to its first size, or show it again',
     scope: 'mouse',
   },
 ]

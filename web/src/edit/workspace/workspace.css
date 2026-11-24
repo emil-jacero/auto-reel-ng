@@ -5,7 +5,9 @@
     display: none;
   }
 
-  /* On <html>, so the notification region (outside `.ws`) places itself by the same pane widths. */
+  /* On <html>, so the notification region (outside `.ws`) places itself by the same pane widths.
+     `Workspace.tsx` writes the drawn sizes over these (`--ws-bin-w`, `--ws-insp-w`, `--ws-tl-h`,
+     `resizable-panes`); these stay the first paint's and the stacked page's. */
   html[data-workspace] {
     --ws-bin-w: clamp(240px, 22vw, 320px);
     --ws-insp-w: 340px;
@@ -21,7 +23,7 @@
     grid-template:
       'top top top' auto
       'bin view insp' minmax(0, 1fr)
-      'tl tl tl' minmax(280px, 38vh) / var(--ws-bin-w) minmax(0, 1fr) var(--ws-insp-w);
+      'tl tl tl' var(--ws-tl-h, minmax(280px, 38vh)) / var(--ws-bin-w) minmax(0, 1fr) var(--ws-insp-w);
     block-size: 100dvh;
     background: var(--bg);
     color: var(--fg);
@@ -315,6 +317,305 @@
     border-block-start: 1px solid var(--border);
   }
 
+  /*
+   * The pane borders (`PaneSeparator.tsx`, `resizable-panes` D5): 8px hit strips biased into the
+   * viewer's padding, transparent at rest. Stacked, they are not shown.
+   */
+  .ws-sep {
+    position: relative;
+    z-index: 5;
+    touch-action: none;
+    background: none;
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      pointer-events: none;
+    }
+
+    &[data-pane='bin'],
+    &[data-pane='insp'] {
+      cursor: col-resize;
+      inline-size: 8px;
+    }
+
+    &[data-pane='tl'] {
+      cursor: row-resize;
+      block-size: 8px;
+    }
+
+    /* The bin's border: 2px inside the bin, 6px into the viewer. */
+    &[data-pane='bin'] {
+      grid-area: bin;
+      justify-self: end;
+      translate: 6px 0;
+
+      &::before {
+        inset-block: 0;
+        inset-inline-start: 0;
+        inline-size: 2px;
+      }
+    }
+
+    /* The inspector's border: 6px into the viewer, 2px inside the inspector. */
+    &[data-pane='insp'] {
+      grid-area: insp;
+      justify-self: start;
+      translate: -6px 0;
+
+      &::before {
+        inset-block: 0;
+        inset-inline-end: 0;
+        inline-size: 2px;
+      }
+    }
+
+    /* The Timeline's border: 6px above its line, 2px inside the Timeline. */
+    &[data-pane='tl'] {
+      grid-area: tl;
+      align-self: start;
+      translate: 0 -6px;
+
+      &::before {
+        inset-inline: 0;
+        inset-block-end: 0;
+        block-size: 2px;
+      }
+    }
+
+    &:hover::before,
+    &:focus-visible::before,
+    &[data-dragging]::before {
+      background: var(--accent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: -2px;
+    }
+
+    /*
+     * A hidden pane's border stays at the window's edge, inside it: an 8px strip with a 3px line
+     * in --fg-subtle (3:1 on both themes' surfaces; --border-strong is not) and a short grip.
+     */
+    &[data-hidden] {
+      &[data-pane='bin'] {
+        justify-self: start;
+        translate: 0 0;
+      }
+
+      &[data-pane='insp'] {
+        justify-self: start;
+        translate: -100% 0;
+      }
+
+      /* Only under the viewer: across the side columns it would lie over their last controls. */
+      &[data-pane='tl'] {
+        grid-column: 2;
+        translate: 0 -100%;
+      }
+
+      &::before {
+        background: var(--fg-subtle);
+      }
+
+      &[data-pane='bin']::before {
+        inline-size: 3px;
+      }
+
+      &[data-pane='insp']::before {
+        inline-size: 3px;
+      }
+
+      &[data-pane='tl']::before {
+        block-size: 3px;
+      }
+
+      &[data-pane='bin']::after,
+      &[data-pane='insp']::after {
+        inset-block: calc(50% - 12px) auto;
+        block-size: 24px;
+        inline-size: 4px;
+        background: linear-gradient(
+          to right,
+          var(--fg-subtle) 0 1px,
+          transparent 1px 3px,
+          var(--fg-subtle) 3px 4px
+        );
+      }
+
+      &[data-pane='bin']::after {
+        inset-inline-start: 4px;
+      }
+
+      &[data-pane='insp']::after {
+        inset-inline-end: 4px;
+      }
+
+      &[data-pane='tl']::after {
+        inset-block-end: 4px;
+        inset-inline: calc(50% - 12px) auto;
+        inline-size: 24px;
+        block-size: 4px;
+        background: linear-gradient(
+          to bottom,
+          var(--fg-subtle) 0 1px,
+          transparent 1px 3px,
+          var(--fg-subtle) 3px 4px
+        );
+      }
+
+      &:hover::before,
+      &:focus-visible::before,
+      &[data-dragging]::before {
+        background: var(--accent);
+      }
+    }
+
+    /* A finger: 24px strips (WCAG 2.5.8), the drawn line staying 2px. */
+    @media (pointer: coarse) {
+      &[data-pane='bin'],
+      &[data-pane='insp'] {
+        inline-size: 24px;
+      }
+
+      &[data-pane='tl'] {
+        block-size: 24px;
+      }
+
+      &[data-pane='bin'] {
+        translate: 12px 0;
+
+        &::before {
+          inset-inline-start: 11px;
+        }
+      }
+
+      &[data-pane='insp'] {
+        translate: -12px 0;
+
+        &::before {
+          inset-inline-end: 11px;
+        }
+      }
+
+      &[data-pane='tl'] {
+        translate: 0 -12px;
+
+        &::before {
+          inset-block-end: 11px;
+        }
+      }
+
+      &[data-hidden] {
+        &[data-pane='bin'] {
+          translate: 0 0;
+        }
+
+        &[data-pane='insp'] {
+          translate: -100% 0;
+        }
+
+        &[data-pane='tl'] {
+          translate: 0 -100%;
+        }
+
+        &[data-pane='bin']::before {
+          inset-inline-start: 0;
+          inline-size: 2px;
+        }
+
+        &[data-pane='insp']::before {
+          inset-inline-end: 0;
+          inline-size: 2px;
+        }
+
+        &[data-pane='tl']::before {
+          inset-block-end: 0;
+          block-size: 2px;
+        }
+
+        &::after {
+          display: none;
+        }
+      }
+    }
+  }
+
+  /* During a drag: the resize cursor everywhere, and no text selected. */
+  html[data-ws-resizing='col'],
+  html[data-ws-resizing='col'] * {
+    cursor: col-resize !important;
+    user-select: none;
+  }
+
+  html[data-ws-resizing='row'],
+  html[data-ws-resizing='row'] * {
+    cursor: row-resize !important;
+    user-select: none;
+  }
+
+  /*
+   * Wide only: nothing the grid lays out scrolls the page, and a hidden pane stays mounted at its
+   * least size outside the window, invisible (`inert` and `data-hidden` are set by Workspace).
+   */
+  @media (width >= 960px) {
+    .ws {
+      overflow: clip;
+    }
+
+    /* The list is the part that shrinks: it takes what the player and ClipInfo leave, down to its
+       heading and one row (`--bin-head-h`, `--bin-row-h`, set by clipBin.css). Wide only: stacked,
+       the box has no height of its own and the list keeps its content's height. */
+    .ws-bin {
+      flex: 1 1 0;
+      min-block-size: calc(var(--bin-head-h, 2.5rem) + var(--bin-row-h, 2.5rem));
+    }
+
+    /* The bin never clips a reachable control and never draws over the Timeline: when the player and
+       ClipInfo's heading (the fixed parts) exceed the bin's height less the list's least, the box scrolls
+       vertically to the rest. Sideways it clips, as before. */
+    .ws-binbox {
+      overflow-x: clip;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    /* A finger's 24px strip on the Timeline's line reaches 12px up into the bin: its last control,
+       scrolled to the end, clears it. */
+    @media (pointer: coarse) {
+      .ws-binbox {
+        padding-block-end: 12px;
+        scroll-padding-block-end: 12px;
+      }
+    }
+
+    /* `data-collapsing` is the live (mid-drag) hide: the same layout, but still visible, so a
+       focused field keeps focus and fires no `blur` until the release commits. */
+    .ws-binbox[data-hidden],
+    .ws-insp[data-hidden],
+    .ws-tl[data-hidden] {
+      visibility: hidden;
+    }
+
+    .ws-binbox[data-collapsing],
+    .ws-binbox[data-hidden] {
+      inline-size: 240px;
+      translate: -100% 0;
+    }
+
+    .ws-insp[data-collapsing],
+    .ws-insp[data-hidden] {
+      inline-size: 320px;
+    }
+
+    .ws-tl[data-collapsing],
+    .ws-tl[data-hidden] {
+      block-size: 200px;
+    }
+  }
+
   /* Narrower windows: one column, the page scrolls (design D1). The top bar sticks while it is
      short enough (`data-rests` otherwise): the page's scroll padding and the panes' sticky
      headings clear its drawn height. */
@@ -365,6 +666,10 @@
     /* The page scrolls: the tabs stay in the flow, the panel headings stick under the top bar. */
     .ws-insp-tabs {
       position: static;
+    }
+
+    .ws-sep {
+      display: none;
     }
 
     .ws-binbox {
