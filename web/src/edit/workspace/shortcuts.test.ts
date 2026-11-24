@@ -363,6 +363,7 @@ test('focusFacts: arrow widgets are ranges, radios and the roles that take arrow
     'gridcell',
     'tree',
     'treeitem',
+    'separator',
   ]) {
     assert.equal(focusFacts(el('DIV', { role }), env()).arrowWidget, true, role)
   }
@@ -424,4 +425,39 @@ test('a clip block yields Space only when the workspace listener will take it', 
   assert.equal(blockYieldsSpace('pointer', false, false), false, 'switch off: the block selects')
   assert.equal(blockYieldsSpace('pointer', true, true), false, 'pointer held')
   assert.equal(blockYieldsSpace('keyboard', true, false), false)
+})
+
+test('a focused pane border keeps the arrows and Enter, and is not a Space control', () => {
+  const separator = focusFacts(el('DIV', { role: 'separator' }), env())
+  assert.equal(separator.arrowWidget, true)
+  assert.equal(separator.spaceControl, false)
+  for (const over of [
+    { key: 'ArrowLeft' },
+    { key: 'ArrowRight' },
+    { key: 'ArrowLeft', shiftKey: true },
+    { key: 'ArrowRight', shiftKey: true },
+    { key: 'ArrowRight', altKey: true },
+  ]) {
+    assert.equal(workspaceCommand(press(over), separator), null, JSON.stringify(over))
+  }
+  // Enter is never a workspace key
+  assert.equal(workspaceCommand(press({ key: 'Enter' }), separator), null)
+  assert.equal(workspaceCommand(press({ key: 'Enter' }), facts()), null)
+})
+
+test('Space on a focused pane border plays after Tab and after a pointer, and not with the switch off', () => {
+  const toggle: Command = { kind: 'playhead', action: { kind: 'toggle' } }
+  for (const modality of ['keyboard', 'pointer'] as const) {
+    const separator = focusFacts(el('DIV', { role: 'separator' }), env({ modality }))
+    assert.deepEqual(workspaceCommand(press({ key: ' ' }), separator), toggle, modality)
+  }
+  const off = focusFacts(el('DIV', { role: 'separator' }), env({ enabled: false }))
+  assert.equal(workspaceCommand(press({ key: ' ' }), off), null)
+})
+
+test('the pane border rows are in the list, as focused and mouse rows', () => {
+  const rows = SHORTCUTS.filter((row) => /pane border|Pane border/.test(row.words + row.keys.flat().join(' ')))
+  assert.equal(rows.length, 5)
+  assert.equal(rows.filter((row) => row.scope === 'focused').length, 3)
+  assert.equal(rows.filter((row) => row.scope === 'mouse').length, 2)
 })

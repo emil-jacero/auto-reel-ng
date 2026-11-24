@@ -31,6 +31,7 @@ import type { Turn } from '../rotate/turn.ts'
 import { Icon } from '../ui/Icon'
 import { cuttable, shownClip } from './binPlayer.ts'
 import { setBinPlayerShown, useBinPlayerShown } from './binPlayerPref.ts'
+import { usePaneHidden } from './workspace/paneSizesPref.ts'
 import type { DraftCut } from './draft'
 import type { Selection } from './workspace/selection.ts'
 
@@ -148,6 +149,8 @@ export function BinPlayer({
 }) {
   const id = useId()
   const wanted = useBinPlayerShown()
+  // A hidden bin (`resizable-panes`) closes the open preview as Hide player does; the player's bar stays.
+  const binHidden = usePaneHidden('bin')
   const [was, setWas] = useState<string | null>(null)
   // Skip cuts is the shown clip's: off for each clip shown, and it outlives the preview's remount
   // when the preview opens or closes.
@@ -181,13 +184,13 @@ export function BinPlayer({
   const focusNext = useRef<FocusTarget | null>(null)
   const playOnOpen = useRef(false)
 
-  // A new shown clip, or a hidden player, closes whatever preview is open: one at a time.
+  // A new shown clip, a hidden player or a hidden bin closes whatever preview is open: one at a time.
   useLayoutEffect(() => {
     const held = previews.open()
-    if (held !== null && (!wanted || held !== shown)) {
+    if (held !== null && (!wanted || binHidden || held !== shown)) {
       previews.hide(held)
     }
-  }, [previews, shown, wanted])
+  }, [previews, shown, wanted, binHidden])
 
   useLayoutEffect(() => {
     if (!open) {

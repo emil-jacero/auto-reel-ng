@@ -17,8 +17,20 @@
   }
 
   @media (width >= 960px) {
+    /* Shrinks after the list (workspace.css: `.ws-bin`) is at its least. Its least height is its real
+       heading (34 px: the toggle and the head's padding) and the 1 px border, so the toggle is never
+       clipped; the block axis clips, so the body's own padding (8 px at its bottom, which keeps its
+       border box above that) never spills past the box's height and makes the bin scroll early. */
     .bin-info {
+      flex: 0 1 auto;
+      min-block-size: 35px;
       max-block-size: 30%;
+      overflow-y: clip; /* not overflow-block: Chrome < 135 lacks logical overflow */
+    }
+
+    /* Its scrolling body is a Tab stop in Firefox: the ring is drawn inside, not cut at the bin's edge. */
+    .bin-info-body:focus-visible {
+      outline-offset: -2px;
     }
   }
 
