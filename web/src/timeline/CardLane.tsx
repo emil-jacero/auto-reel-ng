@@ -8,6 +8,7 @@ import type { CardBlock, CardSpec } from './cards'
 import type { CardPictures } from './useCardImages'
 import type { ShiftFrom } from './Track'
 import { timeToPx } from './model'
+import { cardPressMs, cardPressPart } from './play'
 
 /*
  * The card lane (`title-card-blocks`): one block per chapter whose card the render draws, in
@@ -167,8 +168,10 @@ const CardBlockButton = memo(function CardBlockButton({
         if (block.background === 'black' && !block.off) {
           // Where in the block the press was, as a part of its span on the track.
           const box = event.currentTarget.getBoundingClientRect()
-          const part = box.width > 0 ? (event.clientX - box.left) / box.width : 0
-          onPlace(name, block.startMs + Math.min(0.999, Math.max(0, part)) * widthMs)
+          // Enter comes through as a click with no pointer (detail 0): the playhead goes where the
+          // fade-in ends.
+          const part = cardPressPart(event.detail, event.clientX, box.left, box.width)
+          onPlace(name, cardPressMs(block.startMs, widthMs, part))
         }
       }}
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {

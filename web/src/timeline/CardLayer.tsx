@@ -1,7 +1,7 @@
 import { memo, useSyncExternalStore } from 'react'
 
 import type { CardSpec, Placement } from './cards'
-import { shownAt } from './play'
+import { cardViewAt } from './cardView'
 import type { Playhead } from './playhead'
 import type { CardPictures } from './useCardImages'
 
@@ -13,43 +13,40 @@ import type { CardPictures } from './useCardImages'
  * and hidden from assistive technology: the readout and the slider carry the words. While a
  * card's image is missing its title is shown on black. It reads the playhead's store itself, so
  * a playing card renders this and not the track.
+ *
+ * It shows the card's fades at every playhead position (played, paused, scrubbed, stepped), as the
+ * movie does (`titlecard-scrub-fade`). What to show is decided by the pure `cardView.ts`.
  */
 export const CardLayer = memo(function CardLayer({
   playhead,
   placements,
   specs,
   pictures,
-  playing,
 }: {
   playhead: Playhead
   placements: readonly Placement[]
   specs: readonly CardSpec[]
   pictures: CardPictures
-  /** Only real-time play fades; a paused or scrubbed position shows the card in full. */
-  playing: boolean
 }) {
   const at = useSyncExternalStore(playhead.subscribe, playhead.get)
-  const shown = shownAt(at, placements)
-  if (shown.kind === 'clip') {
+  const view = cardViewAt(at, placements, specs, pictures)
+  if (view === null) {
     return null
   }
-  const opacity = playing ? shown.opacity : 1
-  const spec = specs[shown.chapter]
-  const url = pictures.get(spec?.chapter ?? '')?.url ?? null
-  const title = spec?.card?.title ?? ''
+  const { opacity } = view
   return (
     <div
       className="tl-card-layer"
-      data-kind={shown.kind}
-      data-chapter={spec?.chapter}
+      data-kind={view.kind}
+      data-chapter={view.chapter}
       data-opacity={opacity.toFixed(3)}
       aria-hidden="true"
     >
-      {url !== null ? (
-        <img src={url} alt="" draggable={false} style={{ opacity }} />
+      {view.url !== null ? (
+        <img src={view.url} alt="" draggable={false} style={{ opacity }} />
       ) : (
         <p className="tl-card-fallback" style={{ opacity }}>
-          {title}
+          {view.title}
         </p>
       )}
     </div>

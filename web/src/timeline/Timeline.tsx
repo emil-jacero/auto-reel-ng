@@ -1327,7 +1327,6 @@ export function useTimeline({
           placements={placements}
           specs={specs}
           pictures={pictures}
-          playing={video.playing}
         />
       )}
     </div>
