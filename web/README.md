@@ -778,6 +778,11 @@ after Tab and plays after a click); `shortcutSwitch.ts` is the single-key switch
 `useTimeline` listens on `document` (workspace only) and dispatches; `KeysList.tsx` is the Keyboard shortcuts popover (`#ws-keys`, drawn from the
 table, opened by the top bar's button or `?`; `useSelection`'s Escape yields while it is open). All pure parts are tested by `npm test`.
 
+Resizable panes (`resizable-panes`): from 960 CSS px wide the bin's, the inspector's and the Timeline's borders are `role=separator` handles
+(`edit/workspace/PaneSeparator.tsx`), dragged or moved by keys; a pane dragged past half its least size (or Enter on its border) hides, its border
+staying at the window's edge. `paneSizes.ts` holds the pure limits, snap and keys, `paneSizesPref.ts` the kept panes: sizes and a `hidden` list in
+`auto-reel:workspace-panes` in `localStorage`, per browser for every event. Hidden panes stay mounted, `inert` and out of sight. Tested by `npm test`.
+
 Clip menu (`clip-context-menu`): a right-click on a clip's block, an edge tool or a cut's handle on the track, or Shift+F10 / the Menu key on a
 focused block, opens one menu (`ui/Menu.tsx`, owned by `useTimeline`; pure rules in `timeline/clipMenu.ts` and `ui/menu.ts`) of the clip's existing
 edits: Rotate left/right, Cut at playhead, Use frame as poster, Move to another chapter, Ignore clip. Items that cannot act say why, and all wait

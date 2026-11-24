@@ -997,6 +997,10 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     Shift+Right), a Shift step that starts and ends inside a card, the length-shrink clamp, the picture fallback, and
     the two scenarios this change does not touch (another player starts during a card; a slow frame does not stretch
     the card).
+    **`resizable-panes` is built** (web only; D-28; headed runs and a performance trace not done; see the coarse-pointer note in its bullet below): the bin's, inspector's and Timeline's borders are dragged or keyed
+    separators; a pane dragged past half its least size (or Enter) hides, its border staying at the window's edge; sizes and
+    hidden panes are kept per browser (`auto-reel:workspace-panes`); no API, engine or `RENDER_GRAPH_VERSION` change; no new
+    dependency. Bundle +10.81 kB JS (+3.64 kB gzip) and +2.91 kB CSS (+0.50 kB gzip).
 11. **Packaging** (cross-vendor image, deployment docs). Slice 1: local compose stack (`compose-stack`,
     D-17): a local image and a test stack, nothing published; the published image waits for the D-1
     fdk-aac blocker (§4.12).
@@ -2064,7 +2068,8 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     may cover the upper panes, never the Timeline: it takes at most 40vh and ends above the Timeline's top,
     scrolling within itself in a short window (`--ws-alert-max`; the change's design D4). The bar's drawn height is measured (`--ws-top-measured`), so
     notifications, sticky headings and the scroll padding clear it.
-  - **The panes.** A grid of bin 240 px · viewer · inspector 340 px over a Timeline of `minmax(280px, 38vh)`, each
+  - **The panes.** A grid of bin 240 px · viewer · inspector 340 px over a Timeline of `minmax(280px, 38vh)` (these are the defaults:
+    since `resizable-panes` the operator drags or keys the borders, see the bullet after this one), each
     pane scrolling on its own (`[data-ws-scroll]`, which focus-in-view, drops and Page Up/Down measure against).
     The bin was the chapter lists (`ChapterDrag` / `ClipOrderList`) in a compact row variant, every list action and
     the keyboard sensor kept, rows off screen skipped as on the stacked page (since `plain-clip-bin` it is a plain
@@ -2075,6 +2080,21 @@ Rough dependency order; each becomes one or more OpenSpec changes:
     this event"; the card style and the Title cards switch stay in that editor (a dialog in slice 1, docked since
     slice 2, below). Below 960 px the panes stack (top,
     viewer, Timeline, inspector, bin) and the page scrolls.
+  - **Resizable panes (`resizable-panes`, 2026-11-24, web only).** From 960 CSS px wide the three pane borders (bin, inspector,
+    Timeline) are draggable and are WAI-ARIA `role="separator"` window splitters (`PaneSeparator.tsx`): Left/Right or Up/Down move
+    them 16 px (Shift 64), Home and End go to the smallest and largest shown size, Enter hides or shows the pane. A pane dragged past
+    half its least size hides; its border stays at the window's edge, to drag out, double-click or Enter back (double-click on a
+    shown pane puts it back to its default). A hidden pane stays mounted, `inert` and invisible (`data-hidden`), so the Timeline keeps
+    playing in the viewer, the inspector keeps the Timeline's portals (a save refused at one of its fields shows it first) and the
+    bin closes its player's preview and takes no drops. Sizes and hidden panes are kept per browser in
+    `auto-reel:workspace-panes` (`paneSizesPref.ts`, pure rules in `paneSizes.ts`) over today's default rules, and fitted to the
+    window without being forgotten. The minimums are bin 240 px, inspector 320 px (measured: "Title card" wraps at 300 and fits from 310 in Chromium, 320 in Firefox),
+    Timeline 200 px, viewer 20rem, middle row 20rem with the bin shown and 14rem without (measured: with the bin's information
+    closed the 20rem row holds the player whole and one list row; with it open, or with a coarse pointer, the list shrinks first, down to its heading and one row, then ClipInfo's body to its heading, and only then
+    the bin's box scrolls vertically, so no control is clipped out of reach and nothing is drawn over the Timeline; at 14rem the three-row transport is whole with a small picture). A window too small shrinks panes to their
+    minimums, never hides them, then scrolls inside panes (the bin's box, only after the list keeps its heading and one row and ClipInfo's body its heading; the other panes' bodies); the page never scrolls in the wide frame. `binPlayerPref`'s height rule is
+    now an approximation (the Timeline's height is a preference); pane toggle shortcuts (VS Code's Ctrl+B / Ctrl+J) are a follow-up.
+    No API, engine or `RENDER_GRAPH_VERSION` change; no new dependency.
   - **The bin's width** (`compact-bin-tools`): `clamp(240px, 22vw, 320px)`, not a fixed 240 px (282 px at 1280, 317 px
     at 1440). It then held two-line rows and a two-row sticky marks line, so Tjörn showed 3 whole rows at 1280×720 and 4
     at 1440×900; the marks line and those counts went with `plain-clip-bin` (below).
