@@ -36,7 +36,7 @@ tab's Move earlier, Move later and Move to… (`plain-clip-bin`).
 | 1.1 | Edit opens a full-window workspace (bin · viewer · inspector · timeline); Done returns to the read view | new-web |
 | 1.2 | Workspace is dark by default (footage stands out); the read view keeps following the system theme | new-web |
 | 1.3 | No List view and no second layout: the bin is one plain list of every clip (`plain-clip-bin`); keyboard and screen-reader reorder is the Clip tab's Move earlier, Move later and Move to…; narrow windows stack the panes | new-web |
-| 1.4 | Fixed panes: bin `clamp(240px, 22vw, 320px)` (282 px at 1280, 317 px at 1440; `compact-bin-tools`), inspector 340 px, timeline ~340 px tall, viewer takes the rest | new-web |
+| 1.4 | Resizable, hideable panes: drag a pane line or use its keyboard separator; past half the minimum it hides, and its line stays at the window's edge to bring it back. Defaults bin `clamp(240px, 22vw, 320px)`, inspector 340 px, timeline `minmax(280px, 38vh)`; minimums bin 240 px, inspector 320 px, timeline 200 px, viewer 20rem; kept per browser | new-web |
 
 ### 2. Top bar
 
@@ -120,6 +120,7 @@ spec is merged. Proposed 2026-11-15 under `openspec/changes/`.
 | 10 | `clip-tab-and-player` ✅ built 2026-11-20 (HLD D-28) | a player docked above the bin's lists shows the selected clip, loads on Play only and hides (kept in the browser); the Clip tab is built by the editor for any clip (Move earlier/later, Include, Ignore, Remove), the Timeline adding trims, cuts and poster; the bin rows keep their buttons until `plain-clip-bin` | 9 | 2 days |
 | 11 | `plain-clip-bin` ✅ built 2026-11-22 (HLD D-28) | the bin is one plain list of every clip (3.1, 3.3) with the player above and the clip's information below; selecting and the clip menu as on the track (3.2); the Cuts panel moves into the Clip tab; the marks, chapter sections, handles, row buttons and `@dnd-kit` are gone, so this reverses D-28's "no List view" for the bin's shape only (1.3) | 10 | 2 days |
 | 12 | `seamless-playback` ✅ built 2026-11-23 (HLD D-20) | the Timeline plays across a plain clip boundary on two slots (a shown video and a standby that starts early); measured in research §6.10 and accepted by the operator as measured: Chrome meets the first gate on IN = 0, Firefox misses its hold terms and the -40 ms lost floor (p10 -41.5), leading cuts miss it in both; known limitations and follow-ups in the change's design | 11 | 1 day |
+| 13 | `resizable-panes` built and archived 2026-11-24 (HLD D-28; headed runs, a performance trace and some re-runs on the final code are open, and a coarse pointer with the bin player shown may scroll the bin at 1280x720, accepted) | the dragged and keyboard pane borders, collapse-to-hide, the kept sizes and the minimums; reverses row 1.4's "fixed" | — | 2 days |
 
 Slice 1 was tightened after the build by `compact-bin-tools` (web only, 2026-11-15; its two-line rows, marks line and row counts below were replaced by `plain-clip-bin`, row 11): the bin follows the window's
 width (`clamp(240px, 22vw, 320px)`) and its compact tools take less height. Clip rows are two lines with a fine
@@ -144,6 +145,7 @@ in the browser from the event's resolved cards.
 ## Open questions
 
 - ~~Is Split worth a `reel.yaml` change, or is "cut a span" (already possible) enough?~~ Settled 2026-11-18: `clip-split` was dropped.
+- Follow-up (2026-11-24): pane toggle shortcuts, as VS Code's Ctrl+B / Ctrl+J, need a command and free keys; see `resizable-panes` design D6.
 - Follow-up (2026-11-21): bisect `main` between `7538e62c` (the archived commit, where the 400-clip zoom-slider drag in Chrome
   measures 0.33 % of frames over 25 ms) and `1ae3c68b` (3.53 %; the main spec's gate is 2 %). Something merged in between regressed
   it; `clip-tab-and-player` is not the cause (3.21 % on its branch). The first-edit gate and Firefox's scrub figure are in the same
